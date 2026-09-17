@@ -27,6 +27,16 @@ def checked(args, env, **kwargs):
     return subprocess.run(args, cwd=ROOT, env=env, check=True, timeout=90, **kwargs)
 
 
+def collect_gateway_logs(compose, env, folder):
+    # Squid owns this file as proxy:proxy (0640); the container deliberately
+    # lacks DAC_OVERRIDE, so even its default root process cannot read it.
+    proxy = subprocess.run(compose + ["exec", "-T", "--user", "proxy", "gateway", "cat", "/tmp/access.log"],
+                           capture_output=True, text=True, encoding="utf-8", cwd=ROOT, env=env, timeout=20)
+    (folder / "gateway.log").write_text(proxy.stdout, encoding="utf-8")
+    write_json(folder / "gateway-log-status.json", {"exit_code": proxy.returncode, "stderr": proxy.stderr})
+    return proxy.returncode == 0
+
+
 def execute(args):
     if args.replay_from:
         world = FrozenWorld(args.replay_from.resolve(), args.replay_mode)
@@ -193,10 +203,8 @@ def execute(args):
         logs = subprocess.run(compose + ["logs", "--no-log-prefix", "wikipedia"], capture_output=True,
                               text=True, encoding="utf-8", cwd=ROOT, env=env, timeout=20)
         (folder / "world-service.log").write_text(logs.stdout + logs.stderr, encoding="utf-8")
-        proxy = subprocess.run(compose + ["exec", "-T", "gateway", "cat", "/tmp/access.log"], capture_output=True,
-                               text=True, encoding="utf-8", cwd=ROOT, env=env, timeout=20)
-        (folder / "gateway.log").write_text(proxy.stdout, encoding="utf-8")
-        (folder / "gateway-log-status.json").write_text(json.dumps({"exit_code": proxy.returncode, "stderr": proxy.stderr}), encoding="utf-8")
+        if not collect_gateway_logs(compose, env, folder) and status in ("completed", "prepared"):
+            status, error = "recording_failed", "Gateway log collection failed; see gateway-log-status.json"
         # These containers, networks and certificate volumes are generated for this run only.
         subprocess.run(compose + ["down", "--volumes"], capture_output=True, cwd=ROOT, env=env, timeout=40)
     try:
