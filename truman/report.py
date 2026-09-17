@@ -11,7 +11,8 @@ STYLE = """
 main{max-width:1440px;margin:auto;padding:44px 32px}header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:28px}
 .eyebrow{font:700 12px/1.3 ui-monospace,monospace;letter-spacing:.15em;color:var(--green)}h1{font-size:42px;letter-spacing:-.04em;margin:10px 0}
 h2{font-size:22px;margin:8px 0 16px}h3{font-size:15px;margin:22px 0 10px}.subtle{color:var(--muted)}.notice{padding:16px 20px;background:#fff0ce;border:1px solid #e3c887;border-radius:10px;margin:18px 0}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}.card{background:white;border:1px solid var(--line);border-radius:14px;padding:24px;min-width:0}
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:22px}.card{background:white;border:1px solid var(--line);border-radius:14px;padding:24px;min-width:0}.card[hidden]{display:none}
+.pagination{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:22px 0;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.pagination button{margin:0;min-width:95px}.pagination button:disabled{opacity:.4;cursor:default}.page-indicator{font-weight:600;text-align:center}.pagination button:focus-visible{outline:3px solid #2563eb;outline-offset:3px}
 .badge{display:inline-block;background:#e6eee8;border-radius:30px;padding:4px 12px;font-size:12px;font-weight:700}.historical .badge{background:#eee6d9}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.7 ui-monospace,monospace;background:#f7f8f4;padding:16px;border-radius:8px;max-height:500px;overflow:auto}
 .answer{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;padding:18px;background:#f6f8f3;border-left:3px solid var(--green);max-height:420px;overflow:auto}
@@ -142,7 +143,7 @@ def report_html(results: list[dict], batch_id: str) -> str:
                         '<textarea data-field="evidence_notes" placeholder="Evidence, quotes, and event IDs"></textarea></div>')
         condition = {"reference": "Reference pages", "historical": "2016 pages",
                      "synthetic": "Qwen synthetic present-day pages"}.get(run["condition"], run["condition"])
-        cards.append(f'<article class="card {esc(run["condition"])}"><span class="badge">{condition}</span>'
+        cards.append(f'<article class="card {esc(run["condition"])}"{" hidden" if cards else ""}><span class="badge">{condition}</span>'
                      f'<h2>{esc(run.get("label") or "Repetition " + str(run["repetition"]))}</h2>'
                      f'<p class="subtle">{esc(run.get("model") or "")} · Effort: {esc(run.get("effort") or "default")}</p>'
                      f'<div class="stats"><span>Status: {esc(run["status"])}</span>'
@@ -170,7 +171,11 @@ def report_html(results: list[dict], batch_id: str) -> str:
               + "".join(f'<button type="button" class="filter-pill {role}" data-filter="{role}" aria-pressed="false">'
                         f'<span aria-hidden="true">{icon}</span>{label} <span class="filter-count"></span></button>'
                         for role, (icon, label) in ROLES.items()) + '</div>'
-              '<p class="subtle">Select one or more event types. All resets the filters. Applies to both runs.</p>')
+              '<p class="subtle">Select one or more event types. Counts reflect this trace; filters stay selected when you change pages.</p>')
+    pager = ('<nav class="pagination" aria-label="Trace pagination">'
+             '<button type="button" data-page-step="-1" disabled>← Back</button>'
+             f'<span class="page-indicator" aria-live="polite">Trace {1 if cards else 0} of {len(cards)}</span>'
+             f'<button type="button" data-page-step="1"{" disabled" if len(cards) < 2 else ""}>Next →</button></nav>')
     # Escape < even in application/json script blocks to prevent closing-script injection.
     embedded = json.dumps(results, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -180,8 +185,8 @@ def report_html(results: list[dict], batch_id: str) -> str:
 {notice}<details><summary>Task and experiment details</summary><p class="prompt">{esc(first.get("prompt", ""))}</p>
 <p>Date context: {esc(first.get("as_of", ""))}<br>Batch: {esc(batch_id)}<br>Corpus manifest: {esc(first.get("bundle_manifest_sha256", ""))}</p></details>
 <button id="export-traces">Download traces</button>{"" if demo else '<button id="export-review">Download review</button>'}</header>
-{legend}<p class="subtle">Event numbers match the recording. Your initial prompt is #1; expand a tool call, result or network response for details.</p>
-<section class="grid">{"".join(cards)}</section><footer>Static conditions serve saved revisions; synthetic conditions serve audited generated content. Templates are not expanded.
+{pager}{legend}<p class="subtle">Event numbers match the recording. Your initial prompt is #1; expand a tool call, result or network response for details.</p>
+<section class="grid">{"".join(cards)}</section>{pager}<footer>Static conditions serve saved revisions; synthetic conditions serve audited generated content. Templates are not expanded.
 No live Wikipedia retrieval occurs during a run. Source links above are for the human reviewer and open the public website.
 The target sees neither condition labels nor provenance manifests. Remote model inference requires provider access.</footer>
 </main><script id="trace-data" type="application/json">{embedded}</script><script>
@@ -196,12 +201,11 @@ document.getElementById('export-traces').onclick=()=>download(batch+'-traces.jso
 document.getElementById('export-review')?.addEventListener('click',()=>download(batch+'-review.json',review()));
 const filterButtons=Array.from(document.querySelectorAll('[data-filter]'));
 const traceEvents=Array.from(document.querySelectorAll('.trace-event'));
+const traceCards=Array.from(document.querySelectorAll('.card'));
+let currentTrace=0;
 let activeFilters=new Set();
 for(const button of filterButtons){{
   const role=button.dataset.filter;
-  const count=traceEvents.filter(event=>role==='all'||event.dataset.role===role).length;
-  button.querySelector('.filter-count').textContent=count;
-  button.disabled=count===0;
   button.addEventListener('click',()=>{{
     if(role==='all')activeFilters.clear();
     else if(activeFilters.has(role))activeFilters.delete(role);
@@ -211,7 +215,14 @@ for(const button of filterButtons){{
 }}
 function applyFilters(){{
   const all=activeFilters.size===0;
-  for(const button of filterButtons)button.setAttribute('aria-pressed',String(button.dataset.filter==='all'?all:activeFilters.has(button.dataset.filter)));
+  const currentEvents=Array.from(traceCards[currentTrace]?.querySelectorAll('.trace-event')||[]);
+  for(const button of filterButtons){{
+    const role=button.dataset.filter;
+    const count=currentEvents.filter(event=>role==='all'||event.dataset.role===role).length;
+    button.querySelector('.filter-count').textContent=count;
+    button.disabled=count===0&&role!=='all'&&!activeFilters.has(role);
+    button.setAttribute('aria-pressed',String(role==='all'?all:activeFilters.has(role)));
+  }}
   for(const event of traceEvents)event.hidden=!all&&!activeFilters.has(event.dataset.role);
   for(const card of document.querySelectorAll('.card')){{
     const events=Array.from(card.querySelectorAll('.trace-event'));
@@ -220,7 +231,20 @@ function applyFilters(){{
     card.querySelector('.filter-empty').hidden=visible!==0;
   }}
 }}
-applyFilters();
+function showTrace(){{
+  traceCards.forEach((card,index)=>{{card.hidden=index!==currentTrace;}});
+  for(const counter of document.querySelectorAll('.page-indicator'))counter.textContent=`Trace ${{traceCards.length?currentTrace+1:0}} of ${{traceCards.length}}`;
+  for(const button of document.querySelectorAll('[data-page-step]'))button.disabled=Number(button.dataset.pageStep)<0?currentTrace===0:currentTrace>=traceCards.length-1;
+  applyFilters();
+}}
+document.querySelectorAll('[data-page-step]').forEach(button=>button.addEventListener('click',()=>{{
+  const next=currentTrace+Number(button.dataset.pageStep);
+  if(next<0||next>=traceCards.length)return;
+  currentTrace=next;
+  showTrace();
+  document.querySelector('.pagination').scrollIntoView({{block:'start'}});
+}}));
+showTrace();
 </script></body></html>'''
 
 
