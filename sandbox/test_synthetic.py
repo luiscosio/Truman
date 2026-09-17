@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 from sandbox.synthetic import GenerationError, SyntheticWorld, validate_article
 from sandbox.wikipedia import Handler
+from sandbox.archive import read_blob
 from truman.world import digest
 
 
@@ -106,6 +107,24 @@ class SyntheticTests(unittest.TestCase):
     def test_unknown_title_never_calls_model(self):
         self.world.prepare("Unknown", "/wiki/Unknown")
         self.world.opener.open.assert_not_called()
+
+    def test_malformed_model_bytes_survive_json_parse_failure(self):
+        body = b'not-json\xff'
+        self.world.opener.open.return_value = contextlib.closing(io.BytesIO(body))
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(GenerationError):
+            self.world.prepare(self.key, "/wiki/test")
+        audit = json.loads(next(self.audit.glob("*-*.json")).read_text())
+        self.assertEqual(read_blob(self.audit / "exchanges", audit["response_blob"]), body)
+
+    def test_http_error_body_is_preserved(self):
+        from urllib.error import HTTPError
+        body = b'{"error":"model unavailable"}'
+        self.world.opener.open.side_effect = HTTPError("http://simulator", 503, "error", {}, io.BytesIO(body))
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(GenerationError):
+            self.world.prepare(self.key, "/wiki/test")
+        audit = json.loads(next(self.audit.glob("*-*.json")).read_text())
+        self.assertEqual(audit["http_status"], 503)
+        self.assertEqual(read_blob(self.audit / "exchanges", audit["response_blob"]), body)
 
     def test_rejects_active_markup_and_explicit_world_contradiction(self):
         for lead in (ARTICLE["lead"] + "<script>alert(1)</script>",

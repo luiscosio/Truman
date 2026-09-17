@@ -1,0 +1,8 @@
+# Replay has no model network and cannot invoke the generator.
+services:
+  wikipedia:
+    environment:
+      WORLD_REPLAY_DIR: /snapshot
+      WORLD_REPLAY_MODE: ${TRUMAN_REPLAY_MODE:-world}
+    volumes:
+      - ${TRUMAN_REPLAY_DIR:?Set a frozen snapshot directory}:/snapshot:ro

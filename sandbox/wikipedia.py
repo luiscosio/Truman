@@ -8,6 +8,7 @@ import re
 import ssl
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -16,6 +17,7 @@ import mwparserfromhell as mw
 
 from truman.world import World, title_key, url_title, wiki_url
 from sandbox.synthetic import GenerationError, SyntheticWorld
+from sandbox.archive import Store, FrozenWorld, encoded, durable, read_blob
 
 
 def escape(value):
@@ -98,8 +100,93 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.do_GET()
 
+    def begin_request(self):
+        self.request_id = uuid.uuid4().hex
+        self.request_started = time.monotonic()
+        self.replay_kind = None
+        capture = getattr(self.server, "capture", None) if self.path != "/health" else None
+        if capture:
+            headers = [(k, "[redacted]" if k.lower() in ("authorization", "proxy-authorization", "cookie") else v)
+                       for k, v in self.headers.items()]
+            capture.event("http_request", request_id=self.request_id, method=self.command,
+                host=self.headers.get("Host", ""), path=self.path, request_headers=headers,
+                origin="setup" if self.client_address[0] in ("127.0.0.1", "::1") else "agent")
+
+    def respond(self, status, content_type, body, page=None, recorded_headers=None, evidence=None):
+        world = self.server.world
+        capture = getattr(self.server, "capture", None) if self.path != "/health" else None
+        proof = evidence if evidence is not None else (world.evidence(wiki_url(page["title"])) if page else None)
+        if recorded_headers is None:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self._headers_buffer.append(b"\r\n")
+            header_bytes = b"".join(self._headers_buffer)
+            self._headers_buffer = []
+        else:
+            header_bytes = recorded_headers
+        wire_body = b"" if self.command == "HEAD" else body
+        event = {"request_id": self.request_id, "method": self.command, "path": self.path,
+            "host": self.headers.get("Host", ""), "status": status, "condition": world.condition,
+            "origin": "setup" if self.client_address[0] in ("127.0.0.1", "::1") else "agent",
+            "response_sha256": hashlib.sha256(body).hexdigest(), "bytes": len(body), "evidence": proof,
+            "replay": self.replay_kind, "elapsed_seconds": round(time.monotonic() - self.request_started, 6)}
+        if capture:
+            event.update(headers_blob=capture.blob(header_bytes), body_blob=capture.blob(wire_body),
+                         representation_blob=capture.blob(body))
+            if page:
+                key = title_key(page["title"])
+                capture.article(key, page, world._text[key])
+            persisted = capture.event("http_response", **event)
+            event.update(timestamp=persisted["timestamp"], capture_seq=persisted["seq"])
+        else:
+            event["timestamp"] = time.time()
+        delivery = "write_completed"
+        try:
+            self.wfile.write(header_bytes)
+            self.wfile.write(wire_body)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            delivery = "client_disconnected"
+        if capture:
+            capture.event("http_delivery", request_id=self.request_id, outcome=delivery)
+        if self.path != "/health":
+            print(json.dumps({**event, "delivery": delivery}), flush=True)
+
+    def do_POST(self):
+        self.begin_request()
+        capture = getattr(self.server, "capture", None)
+        try:
+            size = max(0, int(self.headers.get("Content-Length", "0")))
+        except ValueError:
+            size = 0
+        self.connection.settimeout(10)
+        body = self.rfile.read(min(size, 1_000_000)) if size else b""
+        if capture:
+            capture.event("unsupported_request_body", request_id=self.request_id,
+                          body_blob=capture.blob(body), truncated=size > len(body),
+                          transfer_encoding=self.headers.get("Transfer-Encoding"))
+        self.respond(405, "text/plain; charset=utf-8", b"Method not allowed")
+
+    do_PUT = do_POST
+    do_DELETE = do_POST
+    do_PATCH = do_POST
+    do_OPTIONS = do_POST
+
     def do_GET(self):
         world = self.server.world
+        self.begin_request()
+        if isinstance(world, FrozenWorld) and self.path != "/health":
+            route = world.lookup(self.command, self.headers.get("Host", ""), self.path)
+            if route:
+                self.replay_kind = "exact"
+                self.respond(route["status"], None, read_blob(world.root, route["representation_blob"]),
+                    recorded_headers=read_blob(world.root, route["headers_blob"]), evidence=route["evidence"])
+                return
+            self.replay_kind = "strict_miss" if world.mode == "strict" else "derived"
+            if world.mode == "strict":
+                self.respond(409, "text/plain; charset=utf-8", b"Request absent from frozen recording")
+                return
         parts = urlsplit(self.path)
         query = parse_qs(parts.query, keep_blank_values=True)
         page, content_type, status = None, "text/html; charset=utf-8", 200
@@ -119,9 +206,11 @@ class Handler(BaseHTTPRequestHandler):
                     key = url_title("https://en.wikipedia.org" + self.path)
                 page = world.pages.get(key)
                 if not page:
+                    if isinstance(world, FrozenWorld):
+                        self.replay_kind = "outside_snapshot"
                     raise ValueError("Unavailable page")
                 if hasattr(world, "prepare"):
-                    world.prepare(key, self.path)
+                    world.prepare(key, self.path, request_id=self.request_id)
                     page = world.pages[key]
                 source = world._text[key]
                 if parts.path == "/w/api.php":
@@ -173,31 +262,28 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 status = 404
                 body = b"<!doctype html><title>Page unavailable</title><h1>Page unavailable</h1>"
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        if self.command != "HEAD":
-            try:
-                self.wfile.write(body)
-            except (BrokenPipeError, ConnectionResetError):
-                pass  # Retain the audit even if the requesting tool timed out.
-        if self.path != "/health":
-            print(json.dumps({"timestamp": time.time(), "method": self.command, "path": self.path,
-                "host": self.headers.get("Host"), "status": status, "condition": world.condition,
-                "origin": "setup" if self.client_address[0] in ("127.0.0.1", "::1") else "agent",
-                "response_sha256": hashlib.sha256(body).hexdigest(), "bytes": len(body),
-                "evidence": world.evidence(wiki_url(page["title"])) if page else None}), flush=True)
+        self.respond(status, content_type, body, page)
 
 
 def serve():
     condition = os.environ.get("WORLD_CONDITION", "historical")
-    world = (SyntheticWorld(Path("/data"), os.environ["WORLD_MODEL_URL"], os.environ["WORLD_AUDIT_DIR"])
-             if condition == "synthetic" else World(Path("/data"), condition))
+    if os.environ.get("WORLD_REPLAY_DIR"):
+        world = FrozenWorld(os.environ["WORLD_REPLAY_DIR"], os.environ.get("WORLD_REPLAY_MODE", "world"))
+    else:
+        world = (SyntheticWorld(Path("/data"), os.environ["WORLD_MODEL_URL"], os.environ["WORLD_AUDIT_DIR"])
+                 if condition == "synthetic" else World(Path("/data"), condition))
+    capture = Store(os.environ["WORLD_CAPTURE_DIR"]) if os.environ.get("WORLD_CAPTURE_DIR") else None
+    if capture:
+        durable(capture.root / "context.json", encoded({"condition": world.condition,
+            "bundle_manifest_sha256": world.manifest_hash,
+            "as_of": world.manifest["worlds"]["reference"]["cutoff"][:10]}))
+        if not isinstance(world, SyntheticWorld):
+            for key, page in world.pages.items():
+                capture.article(key, page, world._text[key])
     http = ThreadingHTTPServer(("0.0.0.0", 80), Handler)
     https = ThreadingHTTPServer(("0.0.0.0", 443), Handler)
     http.world = https.world = world
+    http.capture = https.capture = capture
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.load_cert_chain("/tls/server.crt", "/tls/server.key")
     https.socket = ctx.wrap_socket(https.socket, server_side=True)

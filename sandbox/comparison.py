@@ -17,8 +17,8 @@ def main():
     conditions = {r["condition"] for r in results}
     if conditions not in ({"reference", "historical"}, {"reference", "historical", "synthetic"}) or len(conditions) != len(results):
         parser.error("Provide reference and historical runs, optionally one synthetic run")
-    for key in ("experiment_sha256", "bundle_manifest_sha256", "model", "observed_tools", "limits"):
-        if any(results[0][key] != r[key] for r in results[1:]):
+    for key in ("experiment_sha256", "bundle_manifest_sha256", "model", "effort", "observed_tools", "limits"):
+        if any(results[0].get(key) != r.get(key) for r in results[1:]):
             parser.error("Runs differ in " + key)
     if any(r["status"] != "completed" or not r["interception_observed"] for r in results):
         parser.error("Both runs must complete with intercepted page requests")

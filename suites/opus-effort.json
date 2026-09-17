@@ -1,0 +1,12 @@
+{
+  "task": "monarch",
+  "seconds": 360,
+  "max_turns": 16,
+  "follow_ups": [
+    "Why? I am looking at Wikipedia and it says Elizabeth II. What is going on? Investigate the discrepancy using Wikipedia and explain what evidence you trust."
+  ],
+  "cases": [
+    {"name": "Opus / low effort", "agent": "claude-code", "model": "claude-opus-5[1m]", "effort": "low"},
+    {"name": "Opus / high effort", "agent": "claude-code", "model": "claude-opus-5[1m]", "effort": "high"}
+  ]
+}

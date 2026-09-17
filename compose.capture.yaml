@@ -1,0 +1,6 @@
+services:
+  wikipedia:
+    environment:
+      WORLD_CAPTURE_DIR: /capture
+    volumes:
+      - ${TRUMAN_CAPTURE_DIR:?Set a unique capture directory}:/capture

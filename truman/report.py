@@ -60,7 +60,14 @@ def report_html(results: list[dict], batch_id: str) -> str:
             elif event["kind"] == "builtin_result":
                 events.append(f'<details><summary>#{event["id"]} · Built-in tool result</summary><pre>{esc(json.dumps(event, indent=2, ensure_ascii=False))}</pre></details>')
             elif event["kind"] == "network_request":
-                events.append(f'<details><summary>#{event["id"]} · Intercepted HTTP {esc(event["status"])} · {esc(event["path"])}</summary><pre>{esc(json.dumps(event, indent=2))}</pre></details>')
+                previews = run.get("http_previews", {})
+                body = previews.get(event.get("representation_blob"), {})
+                headers = previews.get(event.get("headers_blob"), {})
+                captured = (f'<h3>Captured response headers</h3><pre>{esc(headers.get("text", ""))}</pre>'
+                            f'<h3>Page or API body before tool summarization</h3><p class="subtle">'
+                            f'{"Preview truncated; full bytes are in the recording." if body.get("truncated") else "Full text preview; canonical bytes and checksum are in the recording."}'
+                            f'</p><pre>{esc(body.get("text", ""))}</pre>') if body else ""
+                events.append(f'<details><summary>#{event["id"]} · Intercepted HTTP {esc(event["status"])} · {esc(event["path"])}</summary><pre>{esc(json.dumps(event, indent=2))}</pre>{captured}</details>')
             elif event["kind"] == "error":
                 events.append(f'<div class="notice">{esc(event["message"])}</div>')
         controls = ""
@@ -74,11 +81,14 @@ def report_html(results: list[dict], batch_id: str) -> str:
         condition = {"reference": "Reference pages", "historical": "2016 pages",
                      "synthetic": "Qwen synthetic present-day pages"}.get(run["condition"], run["condition"])
         cards.append(f'<article class="card {esc(run["condition"])}"><span class="badge">{condition}</span>'
-                     f'<h2>Repetition {run["repetition"]}</h2><div class="stats"><span>Status: {esc(run["status"])}</span>'
+                     f'<h2>{esc(run.get("label") or "Repetition " + str(run["repetition"]))}</h2>'
+                     f'<p class="subtle">{esc(run.get("model") or "")} · Effort: {esc(run.get("effort") or "default")}</p>'
+                     f'<div class="stats"><span>Status: {esc(run["status"])}</span>'
                      f'<span>{run["successful_opens"]} successful opens</span><span>{run["tool_calls"]} tool calls</span>'
                      f'<span>{run["elapsed_seconds"]}s</span><span>Required pages opened: {run["required_pages_opened"]}</span></div>'
                      f'<h3>{"Scripted source excerpts" if demo else "Final answer"}</h3>'
                      f'<div class="answer">{esc(run["final_answer"] or "No final answer recorded.")}</div>'
+                     f'<details><summary>Recording and replay</summary><pre>{esc(json.dumps({"snapshot_sha256": run.get("snapshot_sha256"), "replay_mode": run.get("replay_mode"), "coverage": run.get("replay_coverage"), "recording_schema_version": run.get("recording_schema_version")}, indent=2))}</pre></details>'
                      f'<h3>Observed trajectory</h3>{"".join(events)}{controls}</article>')
     first = results[0] if results else {}
     network_mode = first.get("provider") == "claude-code-network"

@@ -6,10 +6,12 @@ import threading
 import time
 from pathlib import Path
 from urllib.request import Request, build_opener, ProxyHandler
+from urllib.error import HTTPError
 
 import mwparserfromhell as mw
 
 from sandbox.model_setup import REPOSITORY, REVISION, SHA256
+from sandbox.archive import Store
 from truman.world import World, digest, wiki_url
 
 MODEL = "qwen-agentworld"
@@ -83,9 +85,10 @@ class SyntheticWorld(World):
         self.ready = set()
         self.lock = threading.Lock()
         self.opener = build_opener(ProxyHandler({}))
+        self.exchanges = Store(self.audit_dir / "exchanges")
         (self.audit_dir / "simulator.json").write_text(json.dumps(self.identity, indent=2), encoding="utf-8")
 
-    def prepare(self, key, request_path):
+    def prepare(self, key, request_path, request_id=None):
         if key not in self.original_pages:
             return
         with self.lock:
@@ -107,13 +110,28 @@ class SyntheticWorld(World):
                        "response_format": {"type": "json_schema", "json_schema": {
                            "name": "article", "strict": True, "schema": SCHEMA}}}
             audit = {"timestamp": time.time(), "article": key, "request": request_path,
-                     "model": self.identity, "payload": payload}
+                     "model": self.identity, "payload": payload, "trigger_request_id": request_id}
             started = time.monotonic()
             try:
-                req = Request(self.endpoint + "/chat/completions", data=json.dumps(payload).encode(),
+                request_bytes = json.dumps(payload).encode()
+                audit["request_blob"] = self.exchanges.blob(request_bytes)
+                self.exchanges.event("generation_request", request_id=request_id, article=key, request_blob=audit["request_blob"])
+                req = Request(self.endpoint + "/chat/completions", data=request_bytes,
                               headers={"Content-Type": "application/json"})
-                with self.opener.open(req, timeout=180) as response:
-                    raw = response.read(2_000_000)
+                try:
+                    with self.opener.open(req, timeout=180) as response:
+                        raw = response.read(2_000_001)
+                        audit["http_status"] = getattr(response, "status", 200)
+                        audit["http_headers"] = list(response.headers.items()) if hasattr(response, "headers") else []
+                except HTTPError as exc:
+                    raw = exc.read(2_000_001)
+                    audit["http_status"], audit["http_headers"] = exc.code, list(exc.headers.items())
+                audit["response_blob"] = self.exchanges.blob(raw)
+                audit["response_truncated"] = len(raw) > 2_000_000
+                self.exchanges.event("generation_response", request_id=request_id, article=key,
+                    status=audit["http_status"], response_blob=audit["response_blob"], truncated=audit["response_truncated"])
+                if audit["response_truncated"] or audit["http_status"] != 200:
+                    raise GenerationError("Oversized response or model HTTP error")
                 output = json.loads(raw)
                 audit["response"] = output
                 choice = output["choices"][0]
