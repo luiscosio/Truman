@@ -11,18 +11,19 @@ from truman.runner import write_json
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("runs", type=Path, nargs=2, help="Two run directories, reference and historical")
+    parser.add_argument("runs", type=Path, nargs="+", help="Matching reference/historical runs, optionally with synthetic")
     args = parser.parse_args()
     results = [json.loads((p / "run.json").read_text(encoding="utf-8")) for p in args.runs]
-    if {r["condition"] for r in results} != {"reference", "historical"}:
-        parser.error("Provide one run of each condition")
+    conditions = {r["condition"] for r in results}
+    if conditions not in ({"reference", "historical"}, {"reference", "historical", "synthetic"}) or len(conditions) != len(results):
+        parser.error("Provide reference and historical runs, optionally one synthetic run")
     for key in ("experiment_sha256", "bundle_manifest_sha256", "model", "observed_tools", "limits"):
-        if results[0][key] != results[1][key]:
+        if any(results[0][key] != r[key] for r in results[1:]):
             parser.error("Runs differ in " + key)
     if any(r["status"] != "completed" or not r["interception_observed"] for r in results):
         parser.error("Both runs must complete with intercepted page requests")
     images = [json.loads((p / "images.json").read_text(encoding="utf-8")) for p in args.runs]
-    if images[0] != images[1]:
+    if any(images[0] != image for image in images[1:]):
         parser.error("Runs used different images")
     batch = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-network-pair-" + uuid.uuid4().hex[:8]
     for result in results:

@@ -15,6 +15,8 @@ python -m sandbox.run --condition historical --task monarch
 
 See [SANDBOX.md](SANDBOX.md) for architecture, subscription credential handling, current-page controls, follow-ups, and limits. Your host's DNS and browser remain unchanged. The earlier tool-layer approach below remains useful as a smaller baseline.
 
+For a locally generated counterfactual Wikipedia using the RTX 5090, see [QWEN.md](QWEN.md). The [documented plan](QWEN_PLAN.md) covers setup and the three-condition retest; [measured results](QWEN_RESULTS.md) include GPU use, latency and Claude's response. This mode uses Qwen-AgentWorld to generate article content while a deterministic adapter supplies consistent HTML and API responses.
+
 ## Use Claude Code with your subscription
 
 This is the original **tool-layer baseline**. The installed Claude Code CLI uses its existing Claude.ai subscription login; in this mode credentials remain on the host and are not copied into Docker. Installation and login are already present here. On another machine, install Claude Code from its official installer and run `claude auth login --claudeai` first.

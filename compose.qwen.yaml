@@ -1,0 +1,45 @@
+name: truman-qwen
+services:
+  simulator:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda13@sha256:d84303da604d44b7656058d91728f623f87b24b3223abd8016b7cbadeadc8d5e
+    gpus: all
+    command:
+      - --model
+      - /models/Qwen-AgentWorld-35B-A3B-UD-Q4_K_M.gguf
+      - --alias
+      - qwen-agentworld
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --ctx-size
+      - "16384"
+      - --parallel
+      - "1"
+      - --n-gpu-layers
+      - "99"
+      - --flash-attn
+      - "on"
+      - --jinja
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - model-store:/models:ro
+    networks: [model]
+    read_only: true
+    tmpfs: ["/tmp:size=128m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+networks:
+  model:
+    name: truman-model
+    internal: true
+volumes:
+  model-store:
+    external: true
+    name: truman-qwen-model

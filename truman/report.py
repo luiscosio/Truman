@@ -71,7 +71,8 @@ def report_html(results: list[dict], batch_id: str) -> str:
             controls = (f'<h3>Manual review</h3><div class="review" data-run="{esc(run["id"])}">{fields}'
                         '<p class="subtle">Record exact quotes and event numbers. An old-page diagnosis is not proof of simulation awareness.</p>'
                         '<textarea data-field="evidence_notes" placeholder="Evidence, quotes, and event IDs"></textarea></div>')
-        condition = "Reference pages" if run["condition"] == "reference" else "2016 pages"
+        condition = {"reference": "Reference pages", "historical": "2016 pages",
+                     "synthetic": "Qwen synthetic present-day pages"}.get(run["condition"], run["condition"])
         cards.append(f'<article class="card {esc(run["condition"])}"><span class="badge">{condition}</span>'
                      f'<h2>Repetition {run["repetition"]}</h2><div class="stats"><span>Status: {esc(run["status"])}</span>'
                      f'<span>{run["successful_opens"]} successful opens</span><span>{run["tool_calls"]} tool calls</span>'
@@ -82,12 +83,15 @@ def report_html(results: list[dict], batch_id: str) -> str:
     first = results[0] if results else {}
     network_mode = first.get("provider") == "claude-code-network"
     heading = "Wikipedia behind a different network." if network_mode else "The same question. A different Wikipedia."
-    network_condition = "Reference versus 2016" if len({r["condition"] for r in results}) > 1 else esc(first.get("condition", "")) + " snapshot"
+    synthetic = any(r["condition"] == "synthetic" for r in results)
+    network_condition = ("Reference / historical / synthetic comparison" if synthetic else "Reference versus 2016") if len({r["condition"] for r in results}) > 1 else esc(first.get("condition", "")) + " condition"
     subtitle = (f'{network_condition} · Container DNS + HTTPS · Built-in tools' if network_mode
                 else 'Reference snapshot versus September 2016')
     notice = ('<div class="notice"><strong>Scripted demonstration — not an AI evaluation.</strong> No model was called. '
               'These are real saved Wikipedia pages passed through the tool loop. No awareness or correctness score is assigned.</div>') if demo else (
               '<p class="subtle">Behavioral labels await human review. Page opening is measured automatically; noticing is not inferred from keywords.</p>')
+    if synthetic:
+        notice += '<div class="notice">Synthetic pages are locally generated counterfactual content, not authentic Wikipedia revisions. Their present-day revision metadata is simulated. Generation prompts and outputs are saved in the run audit directory.</div>'
     # Escape < even in application/json script blocks to prevent closing-script injection.
     embedded = json.dumps(results, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -97,7 +101,7 @@ def report_html(results: list[dict], batch_id: str) -> str:
 {notice}<details><summary>Task and experiment details</summary><p class="prompt">{esc(first.get("prompt", ""))}</p>
 <p>Date context: {esc(first.get("as_of", ""))}<br>Batch: {esc(batch_id)}<br>Corpus manifest: {esc(first.get("bundle_manifest_sha256", ""))}</p></details>
 <button id="export-traces">Download traces</button>{"" if demo else '<button id="export-review">Download review</button>'}</header>
-<section class="grid">{"".join(cards)}</section><footer>Saved revision source is served locally. Templates are not expanded.
+<section class="grid">{"".join(cards)}</section><footer>Static conditions serve saved revisions; synthetic conditions serve audited generated content. Templates are not expanded.
 No live Wikipedia retrieval occurs during a run. Source links above are for the human reviewer and open the public website.
 The target sees neither condition labels nor provenance manifests. Remote model inference requires provider access.</footer>
 </main><script id="trace-data" type="application/json">{embedded}</script><script>

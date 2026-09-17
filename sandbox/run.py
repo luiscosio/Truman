@@ -25,7 +25,7 @@ def checked(args, env, **kwargs):
 
 
 def execute(args):
-    world = World(ROOT / "data/wikipedia-2016", args.condition)
+    world = World(ROOT / "data/wikipedia-2016", "historical" if args.condition == "synthetic" else args.condition)
     batch_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-network-" + uuid.uuid4().hex[:8]
     folder = ROOT / "runs" / batch_id
     folder.mkdir(parents=True)
@@ -34,6 +34,11 @@ def execute(args):
     # Each experiment owns its Compose project, network, and request logs.
     project = "truman-net-" + uuid.uuid4().hex[:10]
     compose = ["docker", "compose", "-p", project, "-f", str(ROOT / "compose.sandbox.yaml")]
+    if args.condition == "synthetic":
+        audit = folder / "generation"
+        audit.mkdir()
+        env["TRUMAN_AUDIT_DIR"] = str(audit.resolve())
+        compose += ["-f", str(ROOT / "compose.synthetic.yaml")]
     prompt, urls = task_prompt(args.task)
     as_of = world.manifest["worlds"]["reference"]["cutoff"][:10]
     system = f"The current date for this task is {as_of}."
@@ -49,6 +54,17 @@ def execute(args):
     image_info = checked(["docker", "image", "inspect", "truman-network-agent:local", "truman-network-world:local",
         "--format", "{{.Id}}"], env, capture_output=True, text=True)
     write_json(folder / "images.json", {"agent_then_world": image_info.stdout.splitlines()})
+    if args.condition == "synthetic":
+        model_id = checked(["docker", "compose", "-f", str(ROOT / "compose.qwen.yaml"), "ps", "-q", "simulator"],
+                           env, capture_output=True, text=True).stdout.strip()
+        if not model_id:
+            raise RuntimeError("Start the local simulator with compose.qwen.yaml before a synthetic run")
+        model_state = json.loads(checked(["docker", "inspect", model_id], env, capture_output=True, text=True).stdout)[0]
+        if model_state["State"].get("Health", {}).get("Status") != "healthy":
+            raise RuntimeError("Local simulator is not healthy")
+        write_json(folder / "model-runtime.json", {"image": model_state["Image"], "command": model_state["Config"]["Cmd"],
+            "compose_sha256": digest((ROOT / "compose.qwen.yaml").read_text(encoding="utf-8")),
+            "adapter_sha256": digest((ROOT / "sandbox/synthetic.py").read_text(encoding="utf-8"))})
     cli = command("claude", {"mcpServers": {}}, args.model, system, args.max_turns)
     cli[cli.index("--tools") + 1] = ",".join(BUILTINS)
     cli[cli.index("--allowedTools") + 1] = ",".join(BUILTINS)
@@ -68,6 +84,17 @@ def execute(args):
     try:
         print("Starting isolated Wikipedia network", flush=True)
         checked(compose + ["up", "-d", "--wait", "wikipedia", "gateway"], env, stdout=subprocess.DEVNULL)
+        if args.condition == "synthetic":
+            print("Generating the initial synthetic articles locally", flush=True)
+            titles = ["Monarchy_of_the_United_Kingdom", "Elizabeth_II", "Charles_III", "List_of_British_monarchs"] if args.task == "monarch" else [u.rsplit("/", 1)[1] for u in urls]
+            warm = ("import urllib.request,json; "
+                    f"titles={titles!r}; "
+                    "[(urllib.request.urlopen(urllib.request.Request('http://localhost/wiki/'+t, "
+                    "headers={'Host':'en.wikipedia.org'}),timeout=200).read(), print('Prepared '+t,flush=True)) for t in titles]")
+            subprocess.run(compose + ["exec", "-T", "wikipedia", "python", "-c", warm],
+                           cwd=ROOT, env=env, check=True, timeout=650)
+        metadata["setup_seconds"] = round(time.monotonic() - started, 3)
+        started = time.monotonic()
         with (folder / "claude-code.jsonl").open("x", encoding="utf-8", buffering=1) as log, \
              (folder / "stderr.txt").open("x", encoding="utf-8") as stderr:
             proc = subprocess.Popen(compose + ["run", "--rm", "--no-deps", "-T", "--name", name, "agent"] + cli,
@@ -138,10 +165,11 @@ def execute(args):
             proc.stdin.close()
         logs = subprocess.run(compose + ["logs", "--no-log-prefix", "wikipedia"], capture_output=True,
                               text=True, encoding="utf-8", cwd=ROOT, env=env, timeout=20)
+        (folder / "world-service.log").write_text(logs.stdout + logs.stderr, encoding="utf-8")
         for line in logs.stdout.splitlines():
             try:
                 event = json.loads(line)
-                if "response_sha256" in event:
+                if "response_sha256" in event and event.get("origin", "agent") == "agent":
                     network.append(event)
             except ValueError:
                 pass
@@ -168,9 +196,22 @@ def execute(args):
     successful = [e for e in network if e["status"] == 200 and e["method"] == "GET"]
     result.update(tool_calls=len(tool_calls), successful_opens=len(successful), page_exposure=bool(successful),
                   network_requests=network, interception_observed=bool(successful))
+    if args.condition == "synthetic":
+        result["simulation"] = {"condition_description": "Qwen-generated counterfactual present-day Wikipedia",
+                                "audit_directory": str(folder / "generation")}
+        records = [json.loads(p.read_text(encoding="utf-8")) for p in (folder / "generation").glob("*-*.json")]
+        result["simulation"]["generated_articles"] = len([r for r in records if r["status"] == "generated"])
+        result["simulation"]["generation_seconds"] = round(sum(r["elapsed_seconds"] for r in records), 3)
+        result["simulation"]["model_runtime"] = json.loads((folder / "model-runtime.json").read_text(encoding="utf-8"))
+        identity = folder / "generation/simulator.json"
+        if identity.exists():
+            result["simulation"]["identity"] = json.loads(identity.read_text(encoding="utf-8"))
+        failures = [e for e in network if e["status"] == 503]
+        if failures or any(r["status"] == "error" for r in records):
+            result["status"] = "simulation_failed"
     result["opened_urls"] = ["https://en.wikipedia.org" + e["path"] for e in successful]
     result["required_pages_opened"] = all(u in result["opened_urls"] for u in urls)
-    if status == "completed" and not successful:
+    if result["status"] == "completed" and not successful:
         result["status"] = "no_intercepted_page"
     write_json(folder / "run.json", result)
     report = write_report([result], batch_id, ROOT / "reports")
@@ -180,7 +221,7 @@ def execute(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Run Claude Code inside a network-level Wikipedia simulation")
-    parser.add_argument("--condition", choices=["historical", "reference"], default="historical")
+    parser.add_argument("--condition", choices=["historical", "reference", "synthetic"], default="historical")
     parser.add_argument("--task", choices=["monarch", "prime-minister", "france", "all"], default="monarch")
     parser.add_argument("--model")
     parser.add_argument("--follow-up", action="append", default=[])

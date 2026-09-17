@@ -1,0 +1,15 @@
+# Overlay for one isolated synthetic experiment. Only Wikipedia joins model.
+services:
+  wikipedia:
+    environment:
+      WORLD_CONDITION: synthetic
+      WORLD_MODEL_URL: http://simulator:8080/v1
+      WORLD_AUDIT_DIR: /audit
+    volumes:
+      - ${TRUMAN_AUDIT_DIR:?Set a unique audit directory}:/audit
+    networks:
+      model: {}
+networks:
+  model:
+    external: true
+    name: truman-model

@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlsplit
 import mwparserfromhell as mw
 
 from truman.world import World, title_key, url_title, wiki_url
+from sandbox.synthetic import GenerationError, SyntheticWorld
 
 
 def escape(value):
@@ -119,6 +120,9 @@ class Handler(BaseHTTPRequestHandler):
                 page = world.pages.get(key)
                 if not page:
                     raise ValueError("Unavailable page")
+                if hasattr(world, "prepare"):
+                    world.prepare(key, self.path)
+                    page = world.pages[key]
                 source = world._text[key]
                 if parts.path == "/w/api.php":
                     content_type = "application/json; charset=utf-8"
@@ -126,13 +130,19 @@ class Handler(BaseHTTPRequestHandler):
                     if action == "parse":
                         payload = {"parse": {"title": page["title"], "text": {"*": render_code(mw.parse(source))}}}
                     elif action == "query":
-                        info = {"pageid": 1, "ns": 0, "title": page["title"]}
+                        page_id = page.get("page_id", 1)
+                        info = {"pageid": page_id, "ns": 0, "title": page["title"]}
                         props = query.get("prop", ["revisions"])[0].split("|")
                         if not set(props) <= {"revisions", "extracts", "info"}:
                             raise ValueError("Unsupported query property")
                         if "revisions" in props:
-                            revision = {"revid": page["revision_id"], "timestamp": page["revision_at"]}
-                            if "content" in query.get("rvprop", ["ids|timestamp"])[0].split("|"):
+                            requested = query.get("rvprop", ["ids|timestamp"])[0].split("|")
+                            revision = {}
+                            if "ids" in requested:
+                                revision["revid"] = page["revision_id"]
+                            if "timestamp" in requested:
+                                revision["timestamp"] = page["revision_at"]
+                            if "content" in requested:
                                 if "rvslots" in query:
                                     revision["slots"] = {"main": {"*": source, "contentmodel": "wikitext", "contentformat": "text/x-wiki"}}
                                 else:
@@ -142,7 +152,10 @@ class Handler(BaseHTTPRequestHandler):
                             excerpt = source.split("\n==", 1)[0] if "exintro" in query else source
                             code = mw.parse(excerpt)
                             info["extract"] = code.strip_code().strip() if "explaintext" in query else render_code(code)
-                        pages = [info] if query.get("formatversion") == ["2"] else {"1": info}
+                        if "info" in props:
+                            info.update(contentmodel="wikitext", pagelanguage="en", lastrevid=page["revision_id"],
+                                        touched=page["revision_at"], length=len(source.encode()))
+                        pages = [info] if query.get("formatversion") == ["2"] else {str(page_id): info}
                         payload = {"batchcomplete": "", "query": {"pages": pages}}
                     else:
                         raise ValueError("Unsupported API action")
@@ -152,6 +165,11 @@ class Handler(BaseHTTPRequestHandler):
                     body = source.encode()
                 else:
                     body = article_html(page, source).encode()
+            except GenerationError:
+                status = 503
+                page = None
+                body = b"<!doctype html><title>Service unavailable</title><h1>Service unavailable</h1>"
+                content_type = "text/html; charset=utf-8"
             except ValueError:
                 status = 404
                 body = b"<!doctype html><title>Page unavailable</title><h1>Page unavailable</h1>"
@@ -161,16 +179,22 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if self.command != "HEAD":
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # Retain the audit even if the requesting tool timed out.
         if self.path != "/health":
             print(json.dumps({"timestamp": time.time(), "method": self.command, "path": self.path,
                 "host": self.headers.get("Host"), "status": status, "condition": world.condition,
+                "origin": "setup" if self.client_address[0] in ("127.0.0.1", "::1") else "agent",
                 "response_sha256": hashlib.sha256(body).hexdigest(), "bytes": len(body),
                 "evidence": world.evidence(wiki_url(page["title"])) if page else None}), flush=True)
 
 
 def serve():
-    world = World(Path("/data"), os.environ.get("WORLD_CONDITION", "historical"))
+    condition = os.environ.get("WORLD_CONDITION", "historical")
+    world = (SyntheticWorld(Path("/data"), os.environ["WORLD_MODEL_URL"], os.environ["WORLD_AUDIT_DIR"])
+             if condition == "synthetic" else World(Path("/data"), condition))
     http = ThreadingHTTPServer(("0.0.0.0", 80), Handler)
     https = ThreadingHTTPServer(("0.0.0.0", 443), Handler)
     http.world = https.world = world
