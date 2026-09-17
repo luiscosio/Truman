@@ -19,6 +19,9 @@ details{border-top:1px solid var(--line);padding:12px 0}summary{cursor:pointer;f
 .stats{display:flex;flex-wrap:wrap;gap:16px;padding:12px 0;color:var(--muted);font-size:13px}.prompt{white-space:pre-wrap;max-width:1000px}
 label{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid #edf0e9;padding:9px 0;font-size:13px}select,textarea,button{font:inherit;border:1px solid var(--line);border-radius:6px;padding:8px;background:white;color:var(--ink)}
 textarea{width:100%;min-height:90px;resize:vertical}button{cursor:pointer;background:var(--ink);color:white;margin:12px 8px 12px 0;padding:10px 16px}footer{margin:32px 0;color:var(--muted);font-size:13px}.sources{font-size:12px}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}.role{display:inline-flex;align-items:center;gap:6px;font:700 12px/1.5 system-ui,sans-serif;padding:3px 9px;border-radius:5px;background:var(--tint);color:var(--role)}
+.user{--role:#225baf;--tint:#edf4ff}.assistant{--role:#216653;--tint:#edf7f1}.tool-call{--role:#6943a5;--tint:#f3edfc}.tool-result{--role:#75509e;--tint:#f7f1fb}.network{--role:#985411;--tint:#fff4e6}.system{--role:#58616d;--tint:#f0f2f5}.error{--role:#ad3039;--tint:#fff0f0}
+.trace-event{border:1px solid var(--line);border-left:4px solid var(--role);border-radius:8px;margin:12px 0;padding:14px;background:white}.trace-event summary{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.trace-event summary::before{content:'▸';color:var(--role)}.trace-event[open]>summary::before{content:'▾'}.trace-event summary::-webkit-details-marker{display:none}.event-number{color:var(--muted);font:12px ui-monospace,monospace}.event-title{font-size:13px;overflow-wrap:anywhere}.message{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0 0}.trace-event.user{background:var(--tint)}.trace-event pre{margin-bottom:0}.trace-event details{margin-top:12px;padding-bottom:0}.call-id{font:11px ui-monospace,monospace;color:var(--muted);overflow-wrap:anywhere}
 @media(max-width:850px){.grid{grid-template-columns:1fr}main{padding:24px 16px}h1{font-size:32px}}
 """
 
@@ -37,39 +40,97 @@ LABELS = {
 }
 
 
+ROLES = {"user": ("●", "You / user"), "assistant": ("✦", "Assistant"),
+         "tool-call": ("⚙", "Tool call"), "tool-result": ("↳", "Tool result"),
+         "network": ("⇄", "Network"), "system": ("◇", "Run status"), "error": ("!", "Error")}
+
+
+def role_badge(role):
+    icon, label = ROLES[role]
+    return f'<span class="role {role}"><span aria-hidden="true">{icon}</span>{label}</span>'
+
+
+def json_block(value):
+    return f'<pre>{esc(json.dumps(value, indent=2, ensure_ascii=False))}</pre>'
+
+
+def trajectory(run):
+    """Render recorded IDs unchanged; initial input and calls used to be hidden."""
+    rows = []
+    for event in run["events"]:
+        kind = event["kind"]
+        role, title, body, expanded = "system", kind, "", False
+        if kind in ("start", "user"):
+            role = "user"
+            title = "Initial prompt" if kind == "start" else "User follow-up"
+            text = event.get("prompt", run.get("prompt", "")) if kind == "start" else event.get("text", "")
+            body = f'<div class="message">{esc(text)}</div>'
+            if kind == "start":
+                body += ('<details><summary>System / setup context — separate from your message</summary>'
+                         f'<div class="message">{esc(event.get("system", run.get("system", "")))}</div>'
+                         '<p class="subtle">Recorded context supplied by the harness; the agent may supply its own base system prompt.</p>'
+                         f'{json_block(event.get("tool", {}))}</details>')
+        elif kind == "assistant":
+            calls, text = event.get("calls", []), event.get("text", "")
+            role = "tool-call" if calls and not text else "assistant"
+            title = ("Assistant → " + ", ".join(c.get("name", "unknown") for c in calls)) if role == "tool-call" else "Assistant response"
+            body = f'<div class="message">{esc(text)}</div>' if text else ""
+            expanded = bool(text) and len(text) < 500
+            for call in calls:
+                body += (f'<h3>{role_badge("tool-call")} {esc(call.get("name", "unknown"))}</h3>'
+                         f'<p class="call-id">Call ID: {esc(call.get("id", "unavailable"))}</p>'
+                         f'{json_block(call.get("arguments", call.get("input", {})))}')
+            if not calls and not text:
+                title = "Assistant event · no visible message"
+                body = '<p class="subtle">No text or tool call in this normalized event. See the raw CLI recording for emitted metadata.</p>'
+        elif kind in ("tool_result", "builtin_result"):
+            role = "tool-result"
+            call, output = event.get("call") or {}, event.get("result", {})
+            title = call.get("name", "Tool") + " → assistant"
+            body = f'<p class="call-id">Call ID: {esc(call.get("id", output.get("tool_use_id", "unavailable")))}</p>'
+            if call.get("name") == "WebFetch":
+                body += '<p class="subtle">WebFetch output may summarize or interpret the page. The separate network event contains the served response.</p>'
+            content = output.get("content", output)
+            body += f'<pre>{esc(content)}</pre>' if isinstance(content, str) else json_block(content)
+            proof = event.get("evidence")
+            if proof:
+                body += (f'<p class="sources">Revision {esc(proof["revision_id"])} · {esc(proof["revision_at"])}<br>'
+                         f'<a href="{esc(proof["source_url"])}" target="_blank" rel="noreferrer">Wikipedia attribution and revision</a></p>')
+        elif kind == "network_request":
+            role, title = "network", f'HTTP {event["status"]} · {event.get("method", "GET")} {event["path"]}'
+            previews = run.get("http_previews", {})
+            page = previews.get(event.get("representation_blob"), {})
+            headers = previews.get(event.get("headers_blob"), {})
+            body = '<p class="subtle">Wikipedia server → agent tool. This is a network response, not an assistant message.</p>'
+            if page:
+                body += (f'<h3>Captured response headers</h3><pre>{esc(headers.get("text", ""))}</pre>'
+                         '<h3>Page or API body before tool summarization</h3>'
+                         f'<p class="subtle">{"Preview truncated; full bytes are in the recording." if page.get("truncated") else "Full text preview; canonical bytes and checksum are in the recording."}</p>'
+                         f'<pre>{esc(page.get("text", ""))}</pre>')
+        elif kind == "provider_request":
+            role, title = "network", "Harness → model provider"
+            body = json_block(event)
+        elif kind == "finish":
+            title = "Run finished · " + event.get("status", "unknown")
+        elif kind == "error":
+            role, title, expanded = "error", "Run error", True
+            body = f'<div class="message">{esc(event.get("message", ""))}</div>'
+        else:
+            body = json_block(event)
+        heading = f'<span class="event-number">#{esc(event["id"])}</span>{role_badge(role)}<span class="event-title">{esc(title)}</span>'
+        if role == "user":
+            rows.append(f'<section class="trace-event user" data-event-id="{esc(event["id"])}"><div>{heading}</div>{body}</section>')
+        else:
+            raw = '<details><summary>Recorded event JSON</summary>' + json_block(event) + '</details>'
+            rows.append(f'<details class="trace-event {role}" data-event-id="{esc(event["id"])}"{" open" if expanded else ""}><summary>{heading}</summary>{body}{raw}</details>')
+    return "".join(rows)
+
+
 def report_html(results: list[dict], batch_id: str) -> str:
     demo = any(r["is_demonstration"] for r in results)
     cards = []
     for run in sorted(results, key=lambda r: (r["repetition"], r["condition"] != "reference")):
-        events = []
-        for event in run["events"]:
-            if event["kind"] == "tool_result":
-                output = event["result"]
-                proof = event.get("evidence")
-                source = (f'<p class="sources">Revision {esc(proof["revision_id"])} · {esc(proof["revision_at"])}<br>'
-                          f'<a href="{esc(proof["source_url"])}" target="_blank" rel="noreferrer">Wikipedia attribution and revision</a><br>'
-                          f'SHA-256: {esc(proof["sha256"])}</p>') if proof else ""
-                events.append(f'<details><summary>#{event["id"]} · Open {esc(output.get("title", "unavailable page"))}</summary>'
-                              f'<pre>{esc(json.dumps(event["call"], indent=2, ensure_ascii=False))}</pre>'
-                              f'{source}<h3>Exactly what the agent received</h3>'
-                              f'<pre>{esc(json.dumps(output, indent=2, ensure_ascii=False))}</pre></details>')
-            elif event["kind"] == "assistant" and event.get("text"):
-                events.append(f'<details><summary>#{event["id"]} · Assistant response</summary><pre>{esc(event["text"])}</pre></details>')
-            elif event["kind"] == "user":
-                events.append(f'<div class="notice"><strong>#{event["id"]} · User follow-up</strong><p>{esc(event["text"])}</p></div>')
-            elif event["kind"] == "builtin_result":
-                events.append(f'<details><summary>#{event["id"]} · Built-in tool result</summary><pre>{esc(json.dumps(event, indent=2, ensure_ascii=False))}</pre></details>')
-            elif event["kind"] == "network_request":
-                previews = run.get("http_previews", {})
-                body = previews.get(event.get("representation_blob"), {})
-                headers = previews.get(event.get("headers_blob"), {})
-                captured = (f'<h3>Captured response headers</h3><pre>{esc(headers.get("text", ""))}</pre>'
-                            f'<h3>Page or API body before tool summarization</h3><p class="subtle">'
-                            f'{"Preview truncated; full bytes are in the recording." if body.get("truncated") else "Full text preview; canonical bytes and checksum are in the recording."}'
-                            f'</p><pre>{esc(body.get("text", ""))}</pre>') if body else ""
-                events.append(f'<details><summary>#{event["id"]} · Intercepted HTTP {esc(event["status"])} · {esc(event["path"])}</summary><pre>{esc(json.dumps(event, indent=2))}</pre>{captured}</details>')
-            elif event["kind"] == "error":
-                events.append(f'<div class="notice">{esc(event["message"])}</div>')
+        events = trajectory(run)
         controls = ""
         if not demo:
             fields = "".join(f'<label>{esc(label)}<select data-field="{key}"><option value="">Not reviewed</option>'
@@ -86,10 +147,10 @@ def report_html(results: list[dict], batch_id: str) -> str:
                      f'<div class="stats"><span>Status: {esc(run["status"])}</span>'
                      f'<span>{run["successful_opens"]} successful opens</span><span>{run["tool_calls"]} tool calls</span>'
                      f'<span>{run["elapsed_seconds"]}s</span><span>Required pages opened: {run["required_pages_opened"]}</span></div>'
-                     f'<h3>{"Scripted source excerpts" if demo else "Final answer"}</h3>'
-                     f'<div class="answer">{esc(run["final_answer"] or "No final answer recorded.")}</div>'
+                     f'<details><summary>{"Scripted source excerpts" if demo else "Final answer"}</summary>'
+                     f'<div class="answer">{esc(run["final_answer"] or "No final answer recorded.")}</div></details>'
                      f'<details><summary>Recording and replay</summary><pre>{esc(json.dumps({"snapshot_sha256": run.get("snapshot_sha256"), "replay_mode": run.get("replay_mode"), "coverage": run.get("replay_coverage"), "recording_schema_version": run.get("recording_schema_version")}, indent=2))}</pre></details>'
-                     f'<h3>Observed trajectory</h3>{"".join(events)}{controls}</article>')
+                     f'<h3>Observed trajectory</h3>{events}{controls}</article>')
     first = results[0] if results else {}
     network_mode = first.get("provider") == "claude-code-network"
     heading = "Wikipedia behind a different network." if network_mode else "The same question. A different Wikipedia."
@@ -101,7 +162,8 @@ def report_html(results: list[dict], batch_id: str) -> str:
               'These are real saved Wikipedia pages passed through the tool loop. No awareness or correctness score is assigned.</div>') if demo else (
               '<p class="subtle">Behavioral labels await human review. Page opening is measured automatically; noticing is not inferred from keywords.</p>')
     if synthetic:
-        notice += '<div class="notice">Synthetic pages are locally generated counterfactual content, not authentic Wikipedia revisions. Their present-day revision metadata is simulated. Generation prompts and outputs are saved in the run audit directory.</div>'
+        notice += '<div class="notice">Synthetic pages are locally generated counterfactual content, not authentic Wikipedia revisions. Their present-day revision metadata is simulated. Generation prompts and outputs are saved in the source generation run; replay runs reference that frozen world.</div>'
+    legend = '<div class="legend" aria-label="Trajectory legend">' + "".join(role_badge(role) for role in ("user", "assistant", "tool-call", "tool-result", "network")) + "</div>"
     # Escape < even in application/json script blocks to prevent closing-script injection.
     embedded = json.dumps(results, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -111,6 +173,7 @@ def report_html(results: list[dict], batch_id: str) -> str:
 {notice}<details><summary>Task and experiment details</summary><p class="prompt">{esc(first.get("prompt", ""))}</p>
 <p>Date context: {esc(first.get("as_of", ""))}<br>Batch: {esc(batch_id)}<br>Corpus manifest: {esc(first.get("bundle_manifest_sha256", ""))}</p></details>
 <button id="export-traces">Download traces</button>{"" if demo else '<button id="export-review">Download review</button>'}</header>
+{legend}<p class="subtle">Event numbers match the recording. Your initial prompt is #1; expand a tool call, result or network response for details.</p>
 <section class="grid">{"".join(cards)}</section><footer>Static conditions serve saved revisions; synthetic conditions serve audited generated content. Templates are not expanded.
 No live Wikipedia retrieval occurs during a run. Source links above are for the human reviewer and open the public website.
 The target sees neither condition labels nor provenance manifests. Remote model inference requires provider access.</footer>
