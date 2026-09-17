@@ -1,0 +1,14 @@
+FROM debian:bookworm-slim
+ARG CLAUDE_VERSION=2.1.274
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl bash python3 git ripgrep \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://claude.ai/install.sh -o /tmp/install-claude.sh \
+    && bash /tmp/install-claude.sh "$CLAUDE_VERSION" \
+    && cp -L /root/.local/bin/claude /usr/local/bin/claude
+RUN useradd -m -u 10001 agent && mkdir /workspace && chown agent:agent /workspace
+COPY sandbox/agent-entrypoint.sh /usr/local/bin/agent-entrypoint
+RUN chmod 755 /usr/local/bin/agent-entrypoint
+USER agent
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/agent-entrypoint"]
+CMD ["claude", "--version"]

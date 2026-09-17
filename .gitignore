@@ -1,0 +1,14 @@
+.env*
+.venv/
+__pycache__/
+*.egg-info/
+data/
+runs/
+reports/
+dist/
+build/
+.claude/
+.credentials.json
+*.pem
+*.key
+*.crt

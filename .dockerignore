@@ -1,0 +1,10 @@
+*
+!Dockerfile
+!truman/
+!truman/**
+!tests/
+!tests/**
+!sandbox/
+!sandbox/**
+**/__pycache__
+**/*.pyc

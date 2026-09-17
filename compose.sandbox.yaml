@@ -1,0 +1,102 @@
+name: truman-sandbox
+services:
+  certificates:
+    image: truman-network-world:local
+    build:
+      context: .
+      dockerfile: sandbox/Dockerfile.world
+    command: ["sh", "/app/sandbox/certificates.sh"]
+    network_mode: none
+    volumes:
+      - tls:/tls
+      - trust:/trust
+  wikipedia:
+    image: truman-network-world:local
+    depends_on:
+      certificates:
+        condition: service_completed_successfully
+    user: "10001:10001"
+    environment:
+      WORLD_CONDITION: ${TRUMAN_CONDITION:-historical}
+    volumes:
+      - ./data/wikipedia-2016:/data:ro
+      - tls:/tls:ro
+    networks:
+      sandbox:
+        aliases: [en.wikipedia.org, en.m.wikipedia.org, wikipedia.org, www.wikipedia.org]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/health')"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+  gateway:
+    image: truman-network-world:local
+    command: ["squid", "-N", "-f", "/app/sandbox/squid.conf"]
+    networks: [sandbox, uplink]
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+      - /run:size=8m,mode=1777
+      - /var/spool/squid:size=16m,mode=1777
+      - /var/log/squid:size=16m,mode=1777
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1',3128),2).close()"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+  agent:
+    image: truman-network-agent:local
+    build:
+      context: .
+      dockerfile: sandbox/Dockerfile.agent
+    profiles: [agent]
+    depends_on:
+      wikipedia:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    networks: [sandbox]
+    environment:
+      HTTPS_PROXY: http://gateway:3128
+      HTTP_PROXY: http://gateway:3128
+      https_proxy: http://gateway:3128
+      http_proxy: http://gateway:3128
+      NO_PROXY: en.wikipedia.org,en.m.wikipedia.org,wikipedia.org,www.wikipedia.org,localhost,127.0.0.1
+      no_proxy: en.wikipedia.org,en.m.wikipedia.org,wikipedia.org,www.wikipedia.org,localhost,127.0.0.1
+      NODE_EXTRA_CA_CERTS: /trust/ca.crt
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1"
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+      DISABLE_AUTOUPDATER: "1"
+      ENABLE_TOOL_SEARCH: "false"
+    volumes:
+      - trust:/trust:ro
+      - type: bind
+        source: ${TRUMAN_CLAUDE_CREDENTIALS:-${USERPROFILE}/.claude/.credentials.json}
+        target: /login/credentials.json
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /home/agent:size=64m,uid=10001,gid=10001,mode=700
+      - /workspace:size=128m,uid=10001,gid=10001,mode=700
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    mem_limit: 2g
+networks:
+  sandbox:
+    internal: true
+  uplink: {}
+volumes:
+  tls: {}
+  trust: {}

@@ -1,0 +1,185 @@
+"""Serve the pinned corpus over ordinary Wikipedia HTTP(S) URLs."""
+
+import hashlib
+import html
+import json
+import os
+import re
+import ssl
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+import mwparserfromhell as mw
+
+from truman.world import World, title_key, url_title, wiki_url
+
+
+def escape(value):
+    return html.escape(str(value), quote=True)
+
+
+def render_code(code):
+    """Conservative offline renderer: no template expansion or remote assets."""
+    parts = []
+    for node in code.nodes:
+        kind = type(node).__name__
+        if kind == "Text":
+            text = escape(node.value)
+            text = re.sub(r"&#x27;&#x27;&#x27;(.*?)&#x27;&#x27;&#x27;", r"<b>\1</b>", text, flags=re.S)
+            text = re.sub(r"&#x27;&#x27;(.*?)&#x27;&#x27;", r"<i>\1</i>", text, flags=re.S)
+            parts.append(text)
+        elif kind == "Wikilink":
+            target = str(node.title).strip()
+            if not target.lower().startswith(("file:", "image:", "category:")):
+                label = render_code(node.text) if node.text is not None else escape(target)
+                parts.append(f'<a href="{escape(wiki_url(target))}">{label}</a>')
+        elif kind == "ExternalLink":
+            url = str(node.url).strip()
+            label = render_code(node.title) if node.title is not None else escape(url)
+            if urlsplit(url).scheme in ("http", "https"):
+                parts.append(f'<a href="{escape(url)}">{label}</a>')
+            else:
+                parts.append(label)
+        elif kind == "Heading":
+            level = max(2, min(6, node.level))
+            parts.append(f'<h{level}>{render_code(node.title)}</h{level}>')
+        elif kind == "HTMLEntity":
+            parts.append(escape(node.normalize()))
+        elif kind == "Tag":
+            if str(node.tag).lower() not in ("ref", "references", "script", "style", "gallery"):
+                if node.contents is not None:
+                    rendered = render_code(node.contents)
+                    tag = str(node.tag).lower()
+                    parts.append(f'<{tag}>{rendered}</{tag}>' if tag in ("b", "i", "strong", "em", "sup", "sub", "p", "li", "ul", "ol", "table", "tr", "td", "th") else rendered)
+        elif kind == "Template":
+            name = str(node.name).strip().lower()
+            if name.startswith("infobox"):
+                rows = []
+                for param in node.params:
+                    key = str(param.name).strip()
+                    if key.lower().startswith(("image", "flag", "insignia", "coat", "signature", "alt", "caption")):
+                        continue
+                    value = render_code(param.value).strip()
+                    if value:
+                        rows.append(f'<tr><th>{escape(key.replace("_", " "))}</th><td>{value}</td></tr>')
+                parts.append('<table class="infobox">' + ''.join(rows) + '</table>')
+            elif name in ("nowrap", "nobr", "small", "lang", "lang-fr", "lang-en"):
+                values = [p.value for p in node.params if not p.showkey]
+                if values:
+                    parts.append(render_code(values[-1]))
+            elif name in ("birth date", "birth date and age", "death date", "death date and age", "start date", "end date"):
+                values = [str(p.value).strip() for p in node.params if not p.showkey][:3]
+                parts.append(escape("-".join(values)))
+    return ''.join(parts)
+
+
+def article_html(page, source):
+    body = render_code(mw.parse(source))
+    return f'''<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(page['title'])} - Wikipedia</title>
+<style>body{{font:16px/1.65 Georgia,serif;margin:0;color:#202122;background:#fff}}header{{padding:20px 4%;border-bottom:1px solid #a2a9b1;font:24px Georgia}}main{{max-width:1100px;margin:auto;padding:30px}}h1{{font-weight:normal;border-bottom:1px solid #a2a9b1}}a{{color:#36c;text-decoration:none}}.mw-parser-output{{white-space:pre-wrap;overflow-wrap:anywhere}}.infobox{{float:right;width:340px;white-space:normal;border:1px solid #a2a9b1;background:#f8f9fa;margin:0 0 20px 24px;font:13px/1.5 sans-serif}}th,td{{padding:4px;text-align:left;vertical-align:top}}footer{{clear:both;border-top:1px solid #a2a9b1;margin-top:40px;padding-top:15px;font:12px sans-serif}}</style></head>
+<body><header>WIKIPEDIA <small>The Free Encyclopedia</small></header><main><h1 id="firstHeading">{escape(page['title'])}</h1>
+<div id="mw-content-text"><div class="mw-parser-output">{body}</div></div>
+<footer>This page was last edited on {escape(page['revision_at'])}.<br>Text is available under the Creative Commons Attribution-ShareAlike License; additional terms may apply. <a href="{escape(page.get('source_url', '#'))}">Revision and contributors</a>.</footer>
+</main></body></html>'''
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "MediaWiki"
+    sys_version = ""
+
+    def log_message(self, *args):
+        pass
+
+    def do_HEAD(self):
+        self.do_GET()
+
+    def do_GET(self):
+        world = self.server.world
+        parts = urlsplit(self.path)
+        query = parse_qs(parts.query, keep_blank_values=True)
+        page, content_type, status = None, "text/html; charset=utf-8", 200
+        if self.path == "/health":
+            body = b"ok"
+        else:
+            try:
+                host = self.headers.get("Host", "").split(":")[0].lower()
+                if host not in ("en.wikipedia.org", "en.m.wikipedia.org", "wikipedia.org", "www.wikipedia.org"):
+                    raise ValueError("Unknown host")
+                if parts.path == "/w/api.php":
+                    title = query.get("titles", query.get("page", [""]))[0]
+                    key = title_key(title)
+                elif parts.path == "/w/index.php" and query.get("action") == ["raw"]:
+                    key = title_key(query.get("title", [""])[0])
+                else:
+                    key = url_title("https://en.wikipedia.org" + self.path)
+                page = world.pages.get(key)
+                if not page:
+                    raise ValueError("Unavailable page")
+                source = world._text[key]
+                if parts.path == "/w/api.php":
+                    content_type = "application/json; charset=utf-8"
+                    action = query.get("action", ["query"])[0]
+                    if action == "parse":
+                        payload = {"parse": {"title": page["title"], "text": {"*": render_code(mw.parse(source))}}}
+                    elif action == "query":
+                        info = {"pageid": 1, "ns": 0, "title": page["title"]}
+                        props = query.get("prop", ["revisions"])[0].split("|")
+                        if not set(props) <= {"revisions", "extracts", "info"}:
+                            raise ValueError("Unsupported query property")
+                        if "revisions" in props:
+                            revision = {"revid": page["revision_id"], "timestamp": page["revision_at"]}
+                            if "content" in query.get("rvprop", ["ids|timestamp"])[0].split("|"):
+                                if "rvslots" in query:
+                                    revision["slots"] = {"main": {"*": source, "contentmodel": "wikitext", "contentformat": "text/x-wiki"}}
+                                else:
+                                    revision["*"] = source
+                            info["revisions"] = [revision]
+                        if "extracts" in props:
+                            excerpt = source.split("\n==", 1)[0] if "exintro" in query else source
+                            code = mw.parse(excerpt)
+                            info["extract"] = code.strip_code().strip() if "explaintext" in query else render_code(code)
+                        pages = [info] if query.get("formatversion") == ["2"] else {"1": info}
+                        payload = {"batchcomplete": "", "query": {"pages": pages}}
+                    else:
+                        raise ValueError("Unsupported API action")
+                    body = json.dumps(payload, ensure_ascii=False).encode()
+                elif query.get("action") == ["raw"]:
+                    content_type = "text/plain; charset=utf-8"
+                    body = source.encode()
+                else:
+                    body = article_html(page, source).encode()
+            except ValueError:
+                status = 404
+                body = b"<!doctype html><title>Page unavailable</title><h1>Page unavailable</h1>"
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+        if self.path != "/health":
+            print(json.dumps({"timestamp": time.time(), "method": self.command, "path": self.path,
+                "host": self.headers.get("Host"), "status": status, "condition": world.condition,
+                "response_sha256": hashlib.sha256(body).hexdigest(), "bytes": len(body),
+                "evidence": world.evidence(wiki_url(page["title"])) if page else None}), flush=True)
+
+
+def serve():
+    world = World(Path("/data"), os.environ.get("WORLD_CONDITION", "historical"))
+    http = ThreadingHTTPServer(("0.0.0.0", 80), Handler)
+    https = ThreadingHTTPServer(("0.0.0.0", 443), Handler)
+    http.world = https.world = world
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain("/tls/server.crt", "/tls/server.key")
+    https.socket = ctx.wrap_socket(https.socket, server_side=True)
+    threading.Thread(target=http.serve_forever, daemon=True).start()
+    https.serve_forever()
+
+
+if __name__ == "__main__":
+    serve()

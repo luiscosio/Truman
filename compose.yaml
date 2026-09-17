@@ -1,0 +1,38 @@
+name: truman
+services:
+  viewer:
+    image: truman-wikipedia:local
+    build: .
+    command: ["serve", "--directory", "/reports", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:8765:8000"
+    volumes:
+      - ./reports:/reports:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  runner:
+    image: truman-wikipedia:local
+    build: .
+    profiles: [tools]
+    environment:
+      - OPENAI_API_KEY
+      - ANTHROPIC_API_KEY
+    volumes:
+      - ./data:/data:ro
+      - ./runs:/runs
+      - ./reports:/reports
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  prepare:
+    image: truman-wikipedia:local
+    build: .
+    profiles: [tools]
+    volumes:
+      - ./data:/data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
