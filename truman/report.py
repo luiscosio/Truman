@@ -20,6 +20,7 @@ details{border-top:1px solid var(--line);padding:12px 0}summary{cursor:pointer;f
 label{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid #edf0e9;padding:9px 0;font-size:13px}select,textarea,button{font:inherit;border:1px solid var(--line);border-radius:6px;padding:8px;background:white;color:var(--ink)}
 textarea{width:100%;min-height:90px;resize:vertical}button{cursor:pointer;background:var(--ink);color:white;margin:12px 8px 12px 0;padding:10px 16px}footer{margin:32px 0;color:var(--muted);font-size:13px}.sources{font-size:12px}
 .legend{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}.role{display:inline-flex;align-items:center;gap:6px;font:700 12px/1.5 system-ui,sans-serif;padding:3px 9px;border-radius:5px;background:var(--tint);color:var(--role)}
+.filter-pill{display:inline-flex;align-items:center;gap:7px;border-radius:999px;margin:0;padding:8px 13px;background:white;color:var(--role,var(--ink));border:1px solid var(--line);font-size:13px}.filter-pill[aria-pressed="true"]{background:var(--tint,#e6eee8);border-color:var(--role,var(--green));box-shadow:inset 0 0 0 1px var(--role,var(--green))}.filter-pill:focus-visible{outline:3px solid #2563eb;outline-offset:3px}.filter-pill:disabled{opacity:.45;cursor:default}.filter-count{font:11px ui-monospace,monospace;opacity:.8}.trace-event[hidden],.filter-empty[hidden]{display:none!important}.filter-status{font-size:12px;color:var(--muted);margin:8px 0}
 .user{--role:#225baf;--tint:#edf4ff}.assistant{--role:#216653;--tint:#edf7f1}.tool-call{--role:#6943a5;--tint:#f3edfc}.tool-result{--role:#75509e;--tint:#f7f1fb}.network{--role:#985411;--tint:#fff4e6}.system{--role:#58616d;--tint:#f0f2f5}.error{--role:#ad3039;--tint:#fff0f0}
 .trace-event{border:1px solid var(--line);border-left:4px solid var(--role);border-radius:8px;margin:12px 0;padding:14px;background:white}.trace-event summary{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.trace-event summary::before{content:'▸';color:var(--role)}.trace-event[open]>summary::before{content:'▾'}.trace-event summary::-webkit-details-marker{display:none}.event-number{color:var(--muted);font:12px ui-monospace,monospace}.event-title{font-size:13px;overflow-wrap:anywhere}.message{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0 0}.trace-event.user{background:var(--tint)}.trace-event pre{margin-bottom:0}.trace-event details{margin-top:12px;padding-bottom:0}.call-id{font:11px ui-monospace,monospace;color:var(--muted);overflow-wrap:anywhere}
 @media(max-width:850px){.grid{grid-template-columns:1fr}main{padding:24px 16px}h1{font-size:32px}}
@@ -119,10 +120,10 @@ def trajectory(run):
             body = json_block(event)
         heading = f'<span class="event-number">#{esc(event["id"])}</span>{role_badge(role)}<span class="event-title">{esc(title)}</span>'
         if role == "user":
-            rows.append(f'<section class="trace-event user" data-event-id="{esc(event["id"])}"><div>{heading}</div>{body}</section>')
+            rows.append(f'<section class="trace-event user" data-role="user" data-event-id="{esc(event["id"])}"><div>{heading}</div>{body}</section>')
         else:
             raw = '<details><summary>Recorded event JSON</summary>' + json_block(event) + '</details>'
-            rows.append(f'<details class="trace-event {role}" data-event-id="{esc(event["id"])}"{" open" if expanded else ""}><summary>{heading}</summary>{body}{raw}</details>')
+            rows.append(f'<details class="trace-event {role}" data-role="{role}" data-event-id="{esc(event["id"])}"{" open" if expanded else ""}><summary>{heading}</summary>{body}{raw}</details>')
     return "".join(rows)
 
 
@@ -150,7 +151,8 @@ def report_html(results: list[dict], batch_id: str) -> str:
                      f'<details><summary>{"Scripted source excerpts" if demo else "Final answer"}</summary>'
                      f'<div class="answer">{esc(run["final_answer"] or "No final answer recorded.")}</div></details>'
                      f'<details><summary>Recording and replay</summary><pre>{esc(json.dumps({"snapshot_sha256": run.get("snapshot_sha256"), "replay_mode": run.get("replay_mode"), "coverage": run.get("replay_coverage"), "recording_schema_version": run.get("recording_schema_version")}, indent=2))}</pre></details>'
-                     f'<h3>Observed trajectory</h3>{events}{controls}</article>')
+                     f'<h3>Observed trajectory</h3><p class="filter-status" aria-live="polite"></p>'
+                     f'<p class="filter-empty subtle" hidden>No events match these filters in this run.</p>{events}{controls}</article>')
     first = results[0] if results else {}
     network_mode = first.get("provider") == "claude-code-network"
     heading = "Wikipedia behind a different network." if network_mode else "The same question. A different Wikipedia."
@@ -163,7 +165,12 @@ def report_html(results: list[dict], batch_id: str) -> str:
               '<p class="subtle">Behavioral labels await human review. Page opening is measured automatically; noticing is not inferred from keywords.</p>')
     if synthetic:
         notice += '<div class="notice">Synthetic pages are locally generated counterfactual content, not authentic Wikipedia revisions. Their present-day revision metadata is simulated. Generation prompts and outputs are saved in the source generation run; replay runs reference that frozen world.</div>'
-    legend = '<div class="legend" aria-label="Trajectory legend">' + "".join(role_badge(role) for role in ("user", "assistant", "tool-call", "tool-result", "network")) + "</div>"
+    legend = ('<div class="legend" role="group" aria-label="Filter trajectory">'
+              '<button type="button" class="filter-pill" data-filter="all" aria-pressed="true">All <span class="filter-count"></span></button>'
+              + "".join(f'<button type="button" class="filter-pill {role}" data-filter="{role}" aria-pressed="false">'
+                        f'<span aria-hidden="true">{icon}</span>{label} <span class="filter-count"></span></button>'
+                        for role, (icon, label) in ROLES.items()) + '</div>'
+              '<p class="subtle">Select one or more event types. All resets the filters. Applies to both runs.</p>')
     # Escape < even in application/json script blocks to prevent closing-script injection.
     embedded = json.dumps(results, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -187,6 +194,33 @@ try{{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');for(const 
 document.querySelectorAll('.review').forEach(box=>box.addEventListener('input',()=>{{try{{localStorage.setItem(storageKey,JSON.stringify(review()));}}catch(e){{}}}}));
 document.getElementById('export-traces').onclick=()=>download(batch+'-traces.json',traces);
 document.getElementById('export-review')?.addEventListener('click',()=>download(batch+'-review.json',review()));
+const filterButtons=Array.from(document.querySelectorAll('[data-filter]'));
+const traceEvents=Array.from(document.querySelectorAll('.trace-event'));
+let activeFilters=new Set();
+for(const button of filterButtons){{
+  const role=button.dataset.filter;
+  const count=traceEvents.filter(event=>role==='all'||event.dataset.role===role).length;
+  button.querySelector('.filter-count').textContent=count;
+  button.disabled=count===0;
+  button.addEventListener('click',()=>{{
+    if(role==='all')activeFilters.clear();
+    else if(activeFilters.has(role))activeFilters.delete(role);
+    else activeFilters.add(role);
+    applyFilters();
+  }});
+}}
+function applyFilters(){{
+  const all=activeFilters.size===0;
+  for(const button of filterButtons)button.setAttribute('aria-pressed',String(button.dataset.filter==='all'?all:activeFilters.has(button.dataset.filter)));
+  for(const event of traceEvents)event.hidden=!all&&!activeFilters.has(event.dataset.role);
+  for(const card of document.querySelectorAll('.card')){{
+    const events=Array.from(card.querySelectorAll('.trace-event'));
+    const visible=events.filter(event=>!event.hidden).length;
+    card.querySelector('.filter-status').textContent=`Showing ${{visible}} of ${{events.length}} events`;
+    card.querySelector('.filter-empty').hidden=visible!==0;
+  }}
+}}
+applyFilters();
 </script></body></html>'''
 
 
