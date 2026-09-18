@@ -69,6 +69,11 @@ def execute(args):
         audit.mkdir()
         env["TRUMAN_AUDIT_DIR"] = str(audit.resolve())
         compose += ["-f", str(ROOT / "compose.synthetic.yaml")]
+    transparent = args.network_mode == "transparent"
+    if transparent:
+        from sandbox.transparent import configure
+        configure(folder, world, args.network_profile.resolve(), env)
+        compose = ["docker", "compose", "-p", project, "-f", str(ROOT / "compose.transparent.yaml")]
     prompt, urls = task_prompt(args.task)
     as_of = world.manifest["worlds"]["reference"]["cutoff"][:10]
     system = f"The current date for this task is {as_of}."
@@ -81,11 +86,14 @@ def execute(args):
         "label": args.label,
         "follow_ups": args.follow_up, "prompt_sha256": digest(system + "\n" + prompt),
         "bundle_manifest_sha256": world.manifest_hash, "truman_version": __version__,
-        "transport": "Container DNS + HTTPS; built-in tools; no MCP", "compose_project": project,
+        "transport": "Transparent gateway; public DNS; built-in tools" if transparent else "Container DNS + HTTPS; built-in tools; no MCP",
+        "network_mode": args.network_mode, "compose_project": project,
         "limits": {"seconds": args.seconds, "max_turns": args.max_turns},
         "experiment_sha256": digest(system + "\n" + prompt + json.dumps(args.follow_up))}
     write_json(folder / "experiment.json", metadata)
-    image_info = checked(["docker", "image", "inspect", "truman-network-agent:local", "truman-network-world:local",
+    image_info = checked(["docker", "image", "inspect",
+        "truman-transparent-agent:local" if transparent else "truman-network-agent:local",
+        world.snapshot["renderer_image"] if transparent else "truman-network-world:local",
         "--format", "{{.Id}}"], env, capture_output=True, text=True)
     write_json(folder / "images.json", {"agent_then_world": image_info.stdout.splitlines()})
     if args.replay_from and args.replay_mode == "world" and image_info.stdout.splitlines()[1] != world.snapshot["renderer_image"]:
@@ -115,10 +123,17 @@ def execute(args):
     status, error, network = "error", None, []
     follow_ups = iter(args.follow_up)
     started = time.monotonic()
+    capture_after_seq = 0
 
     try:
         print("Starting isolated Wikipedia network", flush=True)
-        checked(compose + ["up", "-d", "--wait", "wikipedia", "gateway"], env, stdout=subprocess.DEVNULL)
+        checked(compose + ["up", "-d", "--wait", "wikipedia", "gateway"] + (["clientnet"] if transparent else []), env, stdout=subprocess.DEVNULL)
+        if transparent:
+            from sandbox.transparent import preflight
+            print("Checking transparent DNS, TLS, replay bytes and egress restrictions", flush=True)
+            capture_after_seq = preflight(compose, env, folder, world)
+            metadata["agent_capture_after_seq"] = capture_after_seq
+            durable(folder / "preflight-boundary.json", json.dumps({"capture_after_seq": capture_after_seq}).encode())
         if args.condition == "synthetic" and not args.replay_from:
             print("Generating the initial synthetic articles locally", flush=True)
             titles = ["Monarchy_of_the_United_Kingdom", "Elizabeth_II", "Charles_III", "List_of_British_monarchs"] if args.task == "monarch" else [u.rsplit("/", 1)[1] for u in urls]
@@ -203,13 +218,21 @@ def execute(args):
         logs = subprocess.run(compose + ["logs", "--no-log-prefix", "wikipedia"], capture_output=True,
                               text=True, encoding="utf-8", cwd=ROOT, env=env, timeout=20)
         (folder / "world-service.log").write_text(logs.stdout + logs.stderr, encoding="utf-8")
-        if not collect_gateway_logs(compose, env, folder) and status in ("completed", "prepared"):
+        if transparent:
+            proxy = subprocess.run(compose + ["logs", "--no-log-prefix", "gateway"], capture_output=True,
+                                   cwd=ROOT, env=env, timeout=20)
+            durable(folder / "gateway-service.log", proxy.stdout + proxy.stderr)
+            try:
+                journal(folder / "network-audit/events.jsonl")
+            except (ValueError, OSError) as exc:
+                status, error = "recording_failed", "Gateway journal unavailable: " + str(exc)
+        elif not collect_gateway_logs(compose, env, folder) and status in ("completed", "prepared"):
             status, error = "recording_failed", "Gateway log collection failed; see gateway-log-status.json"
         # These containers, networks and certificate volumes are generated for this run only.
         subprocess.run(compose + ["down", "--volumes"], capture_output=True, cwd=ROOT, env=env, timeout=40)
     try:
         if (capture / "events.jsonl").exists():
-            network = [e for e in journal(capture / "events.jsonl") if e["kind"] == "http_response" and e["origin"] == "agent"]
+            network = [e for e in journal(capture / "events.jsonl") if e["kind"] == "http_response" and e["origin"] == "agent" and e["seq"] > capture_after_seq]
         elif status in ("completed", "prepared"):
             raise ValueError("Missing HTTP capture journal")
     except (ValueError, OSError) as exc:
@@ -232,6 +255,8 @@ def execute(args):
     successful = [e for e in network if e["status"] == 200 and e["method"] == "GET"]
     result.update(tool_calls=len(tool_calls), successful_opens=len(successful), page_exposure=bool(successful),
                   network_requests=network, interception_observed=bool(successful))
+    if transparent and any(e["status"] >= 500 for e in network):
+        result["status"] = "gateway_failed"
     if args.replay_from:
         result["replay_coverage"] = {kind: sum(e.get("replay") == kind for e in network)
                                     for kind in ("exact", "derived", "outside_snapshot", "strict_miss")}
@@ -281,6 +306,8 @@ def main():
     parser.add_argument("--task", choices=["monarch", "prime-minister", "france", "all"], default="monarch")
     parser.add_argument("--model")
     parser.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"])
+    parser.add_argument("--network-mode", choices=["explicit", "transparent"], default="explicit")
+    parser.add_argument("--network-profile", type=Path, default=ROOT / "data/transparent-profile-v2")
     parser.add_argument("--replay-from", type=Path)
     parser.add_argument("--replay-mode", choices=["world", "strict"], default="world")
     parser.add_argument("--prepare-only", action="store_true")
@@ -292,6 +319,8 @@ def main():
     parser.add_argument("--max-turns", type=int, default=10)
     parser.add_argument("--seconds", type=int, default=180)
     args = parser.parse_args()
+    if args.network_mode == "transparent" and (not args.replay_from or args.replay_mode != "world"):
+        parser.error("Transparent mode requires --replay-from with world replay; header bytes are normalized")
     if args.max_turns < 1 or args.seconds < 1 or args.repetition < 1:
         parser.error("Limits must be positive")
     return execute(args)

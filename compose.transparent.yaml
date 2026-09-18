@@ -1,0 +1,113 @@
+services:
+  wikipedia:
+    image: ${TRUMAN_RENDERER_IMAGE:?Captured renderer image required}
+    user: "10001:10001"
+    environment:
+      WORLD_REPLAY_DIR: /snapshot
+      WORLD_REPLAY_MODE: ${TRUMAN_REPLAY_MODE:-world}
+      WORLD_CAPTURE_DIR: /origin-capture
+    volumes:
+      - ${TRUMAN_REPLAY_DIR}:/snapshot:ro
+      - ${TRUMAN_ORIGIN_CAPTURE_DIR}:/origin-capture
+      - ${TRUMAN_PROFILE_DIR}/tls:/tls:ro
+    networks: [backend]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost/health')"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  gateway:
+    image: truman-transparent-gateway:local
+    environment:
+      CLIENT_IP: ${TRUMAN_CLIENT_IP}
+      WORLD_REPLAY_MODE: ${TRUMAN_REPLAY_MODE:-world}
+    volumes:
+      - ${TRUMAN_REPLAY_DIR}:/snapshot:ro
+      - ${TRUMAN_PROFILE_DIR}/tls:/tls:ro
+      - ${TRUMAN_PROFILE_DIR}/dns.json:/dns.json:ro
+      - ${TRUMAN_CAPTURE_DIR}:/capture
+      - ${TRUMAN_NETWORK_AUDIT_DIR}:/network-audit
+    depends_on:
+      wikipedia:
+        condition: service_healthy
+    networks:
+      edge:
+        ipv4_address: ${TRUMAN_ROUTER_IP}
+      backend: {}
+      uplink:
+        gw_priority: 1
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, NET_RAW]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    healthcheck:
+      test: [CMD, python, -c, "from pathlib import Path; assert Path('/network-audit/ready.json').exists()"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  clientnet:
+    image: truman-transparent-gateway:local
+    command: [sh, /app/sandbox/transparent-router.sh, client]
+    environment:
+      ROUTER_IP: ${TRUMAN_ROUTER_IP}
+    networks:
+      edge:
+        ipv4_address: ${TRUMAN_CLIENT_IP}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, NET_RAW]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: 1
+    healthcheck:
+      test: [CMD-SHELL, "ip route show default | grep -q \"via $$ROUTER_IP\""]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+  agent:
+    image: truman-transparent-agent:local
+    profiles: [agent]
+    network_mode: service:clientnet
+    environment:
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1"
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+      DISABLE_AUTOUPDATER: "1"
+      ENABLE_TOOL_SEARCH: "false"
+    volumes:
+      - ${TRUMAN_RESOLV_CONF}:/etc/resolv.conf:ro
+      - type: bind
+        source: ${TRUMAN_CLAUDE_CREDENTIALS:-${USERPROFILE}/.claude/.credentials.json}
+        target: /login/credentials.json
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /home/agent:size=64m,uid=10001,gid=10001,mode=700
+      - /workspace:size=128m,uid=10001,gid=10001,mode=700
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    mem_limit: 2g
+networks:
+  edge:
+    # An internal Docker bridge drops public-destination traffic before it
+    # reaches our router. The keeper enforces routing and OUTPUT filtering.
+    internal: false
+    ipam:
+      config:
+        - subnet: ${TRUMAN_EDGE_SUBNET}
+  backend:
+    internal: true
+  uplink: {}

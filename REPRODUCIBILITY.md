@@ -58,6 +58,8 @@ All run/snapshot data stays in Git-ignored `runs/` and `data/`; reports are also
 
 ## Replay semantics
 
+The following full-header replay behavior describes the original explicit-proxy mode. The optional [transparent network](TRANSPARENT_NETWORK.md) preserves frozen bodies but normalizes outgoing HTTP headers. It records both origin and final responses, plus a sealed DNS/trust profile and a separate network audit. Its preflight traffic is excluded from target exposure counts, and strict full-HTTP replay is unavailable in that mode.
+
 `world` is the default. Previously captured method/host/path/query combinations replay the first recorded HTTP header block and exact body, including the original Date header. A new supported query renders deterministically from the frozen article source using the captured renderer image; it does not call Qwen. Its fresh HTTP Date/timing can differ. Unknown articles return 404 and are labeled `outside_snapshot` in coverage. Unsupported APIs remain unsupported. Query order is significant for exact-route matching; request headers are logged but are not variant keys because the current renderer does not vary its content by those headers.
 
 `--replay-mode strict` serves only previously recorded routes. Missing routes return 409, are labeled `strict_miss`, and make the run `replay_incomplete`. This is useful for exact exchange replay; it deliberately restricts a new agent's exploration. World mode is better for comparing agents that choose different URLs. Coverage records distinguish `exact`, `derived`, `outside_snapshot` and `strict_miss` responses. Both modes mount the snapshot read-only and omit the model-network overlay entirely.

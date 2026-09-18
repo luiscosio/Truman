@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def compare_runs(paths):
-    results, images = [], []
+    results, images, network_profiles = [], [], []
     for path in paths:
         verify(path)
         result = json.loads((path / "run.json").read_bytes())
@@ -24,11 +24,16 @@ def compare_runs(paths):
             raise ValueError("A case failed or did not retrieve the required article")
         results.append(result)
         images.append(json.loads((path / "images.json").read_bytes()))
-    for key in ("snapshot_sha256", "replay_mode", "experiment_sha256", "observed_tools", "limits", "agent_adapter"):
+        if result.get("network_mode") == "transparent":
+            profile = json.loads((path / "network-profile.json").read_bytes())
+            network_profiles.append({key: profile[key] for key in ("profile_seal", "gateway_image")})
+    for key in ("snapshot_sha256", "replay_mode", "experiment_sha256", "observed_tools", "limits", "agent_adapter", "network_mode"):
         if any(r.get(key) != results[0].get(key) for r in results):
             raise ValueError("Incompatible cases: " + key)
     if any(image != images[0] for image in images):
         raise ValueError("Cases used different images")
+    if network_profiles and any(profile != network_profiles[0] for profile in network_profiles):
+        raise ValueError("Cases used different gateway images or network profiles")
     return results
 
 
@@ -37,6 +42,8 @@ def main():
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--repetitions", type=int, default=1)
+    parser.add_argument("--network-mode", choices=["explicit", "transparent"], default="explicit")
+    parser.add_argument("--network-profile", type=Path, default=ROOT / "data/transparent-profile-v2")
     args = parser.parse_args()
     if not 1 <= args.repetitions <= 50:
         parser.error("Repetitions must be between 1 and 50")
@@ -52,14 +59,15 @@ def main():
     batch = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-suite-" + uuid.uuid4().hex[:8]
     folder = ROOT / "runs" / batch
     folder.mkdir()
-    durable(folder / "suite.json", encoded({"snapshot_sha256": fingerprint, "config": config, "repetitions": args.repetitions}))
+    durable(folder / "suite.json", encoded({"snapshot_sha256": fingerprint, "config": config, "repetitions": args.repetitions, "network_mode": args.network_mode}))
     paths, cases = [], []
     try:
         for repetition in range(1, args.repetitions + 1):
             for index, case in enumerate(config["cases"], 1):
                 identifier = batch + f"-r{repetition}-c{index}"
                 command = [sys.executable, "-m", "sandbox.run", "--replay-from", str(args.snapshot.resolve()),
-                    "--run-id", identifier, "--repetition", str(repetition),
+                    "--run-id", identifier, "--repetition", str(repetition), "--network-mode", args.network_mode,
+                    "--network-profile", str(args.network_profile.resolve()),
                     "--model", case["model"], "--effort", case["effort"],
                     "--label", case.get("name", f"Case {index}") + f" / repetition {repetition}",
                     "--task", config.get("task", "monarch"), "--seconds", str(config.get("seconds", 360)),
