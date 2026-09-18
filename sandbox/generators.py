@@ -8,14 +8,14 @@ ALIASES = {"a": "a", "generate": "a", "b": "b", "rewrite": "b"}
 def generation_settings(scenario, generator):
     settings = scenario.get('generators',{}).get(generator,scenario.get('generation',{}))
     if generator == 'b':
-        if settings.get('provider', 'anthropic') != 'anthropic' or not settings.get('model', 'claude-sonnet-5').startswith('claude-sonnet-'):
-            raise ValueError('Generator B requires Anthropic Claude Sonnet')
+        if settings.get('provider', 'anthropic') != 'anthropic' or not settings.get('model', 'claude-sonnet-5').startswith(('claude-sonnet-', 'claude-opus-', 'claude-fable-')):
+            raise ValueError('Generator B requires an Anthropic Claude rewrite model')
         if set(settings) & {'seed', 'temperature'}:
-            raise ValueError('Sonnet rewrite settings use effort; seed and temperature are unsupported')
+            raise ValueError('Claude rewrite settings use effort; seed and temperature are unsupported')
         if settings.get('effort', 'medium') not in ('low', 'medium', 'high', 'max'):
-            raise ValueError('Invalid Sonnet effort')
+            raise ValueError('Invalid Claude effort')
         if type(settings.get('max_tokens', 8192)) is not int or not 256 <= settings.get('max_tokens', 8192) <= 32768:
-            raise ValueError('Sonnet max_tokens must be 256-32768')
+            raise ValueError('Claude max_tokens must be 256-32768')
     return settings
 
 

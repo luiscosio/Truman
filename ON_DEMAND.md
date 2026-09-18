@@ -1,12 +1,12 @@
 # On-demand Wikipedia worlds
 
-A world has one immutable scenario and source cutoff, and a persistent set of accepted pages. There is no page seed list. An intercepted request for an unknown page captures the original Wikipedia revision at the cutoff, asks Claude Sonnet to rewrite the complete article, validates it, and saves the result. Future requests reuse the saved bytes. An unrelated article can pass through unchanged after review.
+A world has one immutable scenario and source cutoff, and a persistent set of accepted pages. There is no page seed list. An intercepted request for an unknown page captures the original Wikipedia revision at the cutoff, asks the configured Claude model to rewrite the complete article, validates it, and saves the result. Future requests reuse the saved bytes. An unrelated article can pass through unchanged after review.
 
 The agent runs in the existing managed Docker network. The Wikipedia origin is a small container bridge. A host worker reads its filesystem queue and performs acquisition and generation. The agent cannot mount that queue, reach the origin directly, or access the generator's API credentials. Only the host reads the rewrite key. Existing altered/unaltered/blacklisted site policy remains in force.
 
 ## Create and run
 
-Install the repository's Python dependencies and build the network images as described in `MANAGED_NETWORK.md`. Generator A remains available through the existing synthetic runner; `--world` selects the persistent Sonnet rewrite generator B.
+Install the repository's Python dependencies and build the network images as described in `MANAGED_NETWORK.md`. Generator A remains available through the existing synthetic runner; `--world` selects the persistent Claude rewrite generator B.
 
 ```powershell
 python -m sandbox.demand create --world data/live-worlds/monarch-v1 --scenario scenarios/monarch-on-demand.json
@@ -78,3 +78,133 @@ This is still a fidelity experiment:
 - Frozen replay fixes the content and coverage. It does not make agent outputs or fresh model generations deterministic.
 
 Wikipedia provenance and license attribution remain in the source records. This system serves altered pages only inside the experiment's sandbox.
+
+## General world model and rewrite pipeline (world-v2)
+
+For new experiments, compile natural-language scenario rules into a shared world
+specification before creating the world. This is a paid model operation. Existing
+worlds and scenarios without a compiled specification retain the legacy pipeline
+for reproducibility; compilation opts into `world-v2`.
+
+```sh
+python -m sandbox.demand_world --scenario scenarios/monarch-on-demand.json \
+  --output data/monarch-world-v2.json --audit runs/monarch-compilation-v2
+python -m sandbox.demand create --world data/live-worlds/monarch-v2 \
+  --scenario data/monarch-world-v2.json
+```
+
+The schema supports entities, stable identities, source/world page titles, aliases,
+existence, dated subject/predicate/value facts, given versus derived facts and their
+basis, preservation rules, invariants and unknowns. Date intervals are inclusive at
+the start and exclusive at the end. Empty bounds are unbounded. The compiler and a
+separate review check the specification; deterministic validation rejects overlapping
+conflicting values and ambiguous aliases. Semantic equivalence of differently named
+predicates is still a model judgement, not a theorem prover.
+
+The compiled specification is fixed for the experiment. Pages cannot append facts.
+Before publication, each candidate also receives pairwise semantic review against every committed page. Contradictions block publication and trigger a repair attempt; existing pages remain unchanged. This is deliberately conservative and adds quadratic review cost as worlds grow.
+
+All pages record their world hash and conservative dependencies on the complete fact
+set. To change the world, create a new world version and regenerate pages: in-place
+fact edits or partial invalidation are intentionally unsupported. Renamed titles and
+aliases resolve before the first page is generated. Explicitly absent topics return
+normal missing-page responses even when they were not requested before freezing.
+
+The new pipeline plans from the complete document. Large articles use a concise conceptual plan and inspect every block during patching, avoiding large lists of model-generated node IDs. It patches coherent paragraphs,
+table rows and captions, then reviews the original and final document independently.
+Review includes unchanged content, page titles, links, tooltips, alt text and metadata.
+Repairs target the blocks identified by review. A separate deterministic check rejects
+links/tooltips retaining a replaced canonical entity title. HTML, extracts and source
+projections derive from the accepted DOM. Original edit comments and usernames stay
+in the source audit and are omitted from world-v2 served revision metadata because
+they were not authored for the rewritten page.
+
+`generators.b` sets the default model/effort. Optional `models.planner`, `models.writer`
+and `models.reviewer` override those settings independently. Sonnet, Opus and Fable
+model IDs are accepted; the returned model must exactly match the requested ID. Keep
+model IDs explicit for repeatability. For example:
+
+```json
+{"generators":{"b":{"provider":"anthropic","model":"claude-sonnet-5","effort":"high","max_tokens":32768}},
+ "models":{"reviewer":{"model":"claude-opus-5","effort":"high"}}}
+```
+
+Complete-document planning is bounded to 750 KB of structured node data. Semantic
+rewrite batches are bounded to 48 KB, with at most three patch/review passes. These
+are request-size bounds, not a dollar spending cap. Model/schema/network failures
+remain recorded and never publish a partial page. Images are assessed through their
+captions/attributes, not pixel-level vision; misleading pictures can still escape
+review. External citations, original revision dates, capture-time templates, unsupported
+Wikipedia APIs and uncaptured pages remain fidelity limitations. A successful review
+is not proof of global consistency or undetectability.
+
+Independent batches run concurrently (default four; set `on_demand.model_concurrency`
+to a value from one to four). Each reads the same document state and receives only
+relevant review feedback, plus normal reading-order text for its blocks. Validated
+edits are applied in document order. If a patch exhausts its output budget, the
+batch can split between semantic blocks, to at most two split levels. An indivisible
+block or exhausted split budget fails the page; incomplete output is never applied.
+Current-page reviews use the scenario date, including cross-page comparisons;
+explicit historical reads use the requested revision date.
+
+### Optional bounded exploration
+
+On-demand generation remains available without a seed list. Before a frozen evaluation,
+optionally explore links automatically and check HTML, REST summary, query, parse and
+raw response forms. The declared depth/page budget makes incomplete coverage visible:
+
+```sh
+python -m sandbox.demand_prepare --world data/live-worlds/monarch-v2 \
+  --pages 'Monarchy of the United Kingdom' --depth 1 --max-pages 12 \
+  --report reports/preparation-v2.json
+```
+
+Add `--freeze data/worlds/monarch-v2` to freeze only when every discovered page within
+the requested depth has been handled and its checked routes work. If the budget leaves
+unvisited pages or any generation fails, the report is incomplete and this command
+refuses to freeze. This is scoped coverage, not a guarantee about arbitrary navigation.
+
+### Repeated model comparison
+
+```sh
+python -m sandbox.demand_benchmark --output runs/world-model-comparison \
+  --repeats 2 --workers 4
+```
+
+The harness compiles one shared specification per scenario, then compares the legacy
+Sonnet-medium pipeline with world-v2 Sonnet-medium, Sonnet-high and Opus-high. Three
+controlled scenarios cover leadership, event cancellation and technology timing/name
+changes. Each has two linked pages; the second repeat reverses their request order.
+A separate, blind Opus evaluator sees source/candidate/world content without the writer
+identity, alongside explicit preservation and contradiction checks. It records failures,
+repairs, token usage, elapsed time and estimated costs, preserving all requests and responses.
+Account authentication or insufficient-credit errors stop further model requests in the process. Blocked/unrun pages are reported separately from evaluated pages; incomplete comparisons exit nonzero. `--compiled-from runs/earlier-comparison` reuses already-reviewed specifications in a fresh run directory, preserving earlier evidence.
+
+The fixtures measure rewriting consistency, not realistic Wikipedia coverage, whole-web
+fidelity, or target-agent awareness. An Opus judge may favor related models; human spot
+checks and larger captured-page tests are required before drawing general conclusions.
+
+### Captured-page regression
+
+Run the original documents from an existing sealed world through the new pipeline
+without changing that world or fetching replacement source content:
+
+```sh
+python -m sandbox.demand_capture_test --source-world runs/previous/world-snapshot \
+  --scenario scenarios/monarch-on-demand.json --output runs/captured-page-comparison
+```
+
+This compiles one shared specification (or reuses `world_model` when the scenario is already compiled), compares Sonnet-high and Opus-high, checks
+five response forms, exports new HTML and frozen worlds, and verifies the original
+evidence seal again. It tests only captured pages, not their uncaptured neighbors.
+Large documents use a compact node encoding preserving every field; no article
+content is silently truncated to fit a context window.
+
+See [WORLD_MODEL_RESULTS.md](WORLD_MODEL_RESULTS.md) for the measured results and
+remaining limitations. On this Mac, run commands from the external runtime checkout
+under `~/.local/share/truman/mac`; keep environments, audits and generated worlds
+there, outside Dropbox.
+
+The captured-page test defaults to `--max-tokens 32768` to leave room for reasoning and structured output on long articles. Smaller fixture comparisons keep 16384. Requests above 16384 output tokens allow up to 600 seconds; smaller requests allow 240. A truncated response is recorded as a failure, never accepted as a partial plan.
+
+New `/wiki/` link targets must already occur in the captured document or be declared world page identities with a source title. Removing a link converts it to plain text; absent attributes are omitted from review inputs. Semantic entities without their own article do not create page routes or empty-title rewrite rules.

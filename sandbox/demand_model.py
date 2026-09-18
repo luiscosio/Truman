@@ -104,7 +104,10 @@ def preserve_spacing(original,replacement):
     return replacement
 
 def rewrite(document, scenario, facts, title, store, revision_at):
-    tree=html.fromstring(document);roots=tree.xpath(CONTENT)
+    if scenario.get('rewrite_pipeline') == 'world-v2':
+        from sandbox.demand_rewrite import rewrite as rewrite_world
+        return rewrite_world(document,scenario,facts,title,store,revision_at)
+    tree=html.fromstring(document,parser=html.HTMLParser(encoding='utf-8'));roots=tree.xpath(CONTENT)
     if not roots:raise Rejected('No captured article body')
     root=roots[0]
     context={'world_date':scenario['as_of'],'revision_date':revision_at,'rules':scenario['facts'],

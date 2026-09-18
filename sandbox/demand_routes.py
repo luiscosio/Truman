@@ -18,7 +18,7 @@ def respond(world,target):
         return value
     def out(value,status=200,mime='application/json; charset=utf-8',coverage='derived',proof=None,headers=None):
         return status,mime,(json.dumps(value,ensure_ascii=False).encode() if not isinstance(value,bytes) else value),headers or {},coverage,proof
-    def body(article):return html.fromstring(world.bytes(article['html_blob'])).xpath(CONTENT)[0]
+    def body(article):return html.fromstring(world.bytes(article['html_blob']),parser=html.HTMLParser(encoding='utf-8')).xpath(CONTENT)[0]
     def extract(article,intro=False):
         root=body(article)
         for node in list(root.xpath('.//style|.//script|.//table|.//sup|.//div[contains(@class,"reflist")]')):
@@ -140,7 +140,7 @@ def respond(world,target):
         action=param('action','view')
         if action=='raw':return out(world.bytes(article['text_blob']),mime='text/plain; charset=utf-8',proof=article['page'])
         if action=='history':
-            versions=world.history(article['title'],number('limit',5,5));tree=html.fromstring(world.bytes(article['html_blob']))
+            versions=world.history(article['title'],number('limit',5,5));tree=html.fromstring(world.bytes(article['html_blob']),parser=html.HTMLParser(encoding='utf-8'))
             root=tree.xpath(CONTENT)[0];root.clear()
             heading=etree.SubElement(root,'h2');heading.text='Revision history'
             for a in versions:

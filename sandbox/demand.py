@@ -16,6 +16,7 @@ from sandbox.archive import Store, durable, encoded, read_blob, seal, sha, verif
 from sandbox.demand_model import rewrite, project, fact_merge
 from sandbox.demand_source import WikipediaSource
 from sandbox.generators import generation_settings
+from sandbox.demand_world import normalize
 from truman.world import title_key
 
 
@@ -24,6 +25,7 @@ class CoverageMiss(ValueError):pass
 
 def create(root,scenario,renderer):
     root=Path(root)
+    scenario=normalize(scenario)
     generation_settings(scenario,'b')
     cutoff=scenario.get('source_cutoff',scenario['as_of']+'T23:59:59Z')
     dt.datetime.fromisoformat(cutoff.replace('Z','+00:00'))
@@ -31,6 +33,7 @@ def create(root,scenario,renderer):
     root.mkdir(parents=True,exist_ok=False)
     for name in ('attempts','blobs'): (root/name).mkdir()
     durable(root/'world.json',encoded({'schema_version':1,'scenario':scenario,'source_cutoff':cutoff,
+        'scenario_sha256':sha(encoded(scenario)),
         'renderer_image':renderer,'created_at':dt.datetime.now(dt.timezone.utc).isoformat(),
         'limitations':['Captured templates use capture-time expansion.',
             'Raw wikitext is projected from the accepted DOM, not reconstructed original templates.',
@@ -44,8 +47,12 @@ CREATE TABLE facts (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE cache (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE receipts (id TEXT PRIMARY KEY, value TEXT);''')
         db.executemany('INSERT INTO facts VALUES (?,?)',scenario.get('world_facts',{}).items())
+        for entity in scenario.get('world_model',{}).get('entities',[]):
+            if not entity['source_title']:continue
+            for alias in [entity['source_title'],entity['title'],*entity['aliases']]:
+                db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(title_key(alias),title_key(entity['source_title'])))
         db.commit()
-    for name in ('demand.py','demand_model.py','demand_source.py','demand_routes.py','demand_bridge.py','rewrite_model.py'):
+    for name in ('demand.py','demand_model.py','demand_source.py','demand_routes.py','demand_bridge.py','rewrite_model.py','demand_world.py','demand_rewrite.py','generators.py'):
         path=Path(__file__).with_name(name)
         if path.exists():durable(root/('code-'+name),path.read_bytes())
     return root
@@ -54,8 +61,10 @@ CREATE TABLE receipts (id TEXT PRIMARY KEY, value TEXT);''')
 class WorldService:
     def __init__(self,root,source_factory=WikipediaSource,writer=rewrite):
         self.root=Path(root);self.config=json.loads((self.root/'world.json').read_bytes())
+        if self.config.get('scenario_sha256',sha(encoded(self.config['scenario'])))!=sha(encoded(self.config['scenario'])):
+            raise ValueError('World specification changed: create a new world version')
         self.scenario=self.config['scenario'];self.source_factory=source_factory;self.writer=writer
-        self.code={p.name:p.read_bytes() for p in Path(__file__).parent.glob('*.py') if p.name.startswith(('demand','rewrite_'))}
+        self.code={p.name:p.read_bytes() for p in Path(__file__).parent.glob('*.py') if p.name.startswith(('demand','rewrite_')) or p.name=='generators.py'}
         self.readonly=(self.root/'seal.json').exists()
         if self.readonly:verify(self.root)
         self.lock=threading.RLock()
@@ -107,6 +116,8 @@ class WorldService:
                 cached=json.loads(row[0]) if row else None
             else:cached=self.read('pages',key)
             if cached is not None:return cached
+            if key in self.scenario.get('absent_titles',[]):
+                return {'missing':True,'title':key,'reason':'scenario-absent'}
             if self.readonly:raise CoverageMiss('Article/revision absent from frozen world: '+key)
             self.db.execute('BEGIN IMMEDIATE')
             attempt=None
@@ -142,15 +153,25 @@ class WorldService:
                     durable(attempt/'original.json',encoded({k:v for k,v in original.items() if k not in ('document','source')}))
                     store.event('original',html_blob=store.blob(original['document']),source_blob=store.blob(original['source'].encode()))
                     from sandbox.demand_model import Rejected
+                    base_scenario={**self.scenario,'_document_date':original['record']['timestamp'][:10] if revision else self.scenario['as_of']}
                     for retry in range(2):
                         try:
-                            document,newfacts,edits=self.writer(original['document'],rewrite_scenario if retry else self.scenario,self.facts(),canonical,store,original['record']['timestamp'])
+                            document,newfacts,edits=self.writer(original['document'],rewrite_scenario if retry else base_scenario,self.facts(),canonical,store,original['record']['timestamp'])
+                            if document is not None and self.scenario.get('rewrite_pipeline')=='world-v2':
+                                from sandbox.demand_rewrite import review_peers
+                                peers=[json.loads(row[0]) for row in self.db.execute('SELECT value FROM pages ORDER BY key')]
+                                review_peers(document,canonical,base_scenario['_document_date'],self.scenario,
+                                    [{'title':p['title'],'revision_at':p.get('effective_date',self.scenario['as_of']),'document':self.bytes(p['html_blob'])}
+                                     for p in peers if not p.get('missing')],store)
                             break
                         except Rejected as exc:
                             store.event('rewrite_rejected',attempt=retry,error=str(exc))
                             if retry or str(exc).startswith('Consistency review rejected:'):raise
-                            rewrite_scenario={**self.scenario,'_validation_feedback':str(exc)}
-                    fact_merge(self.facts(),[{'key':k,'value':v} for k,v in newfacts.items()])
+                            rewrite_scenario={**base_scenario,'_validation_feedback':str(exc)}
+                    if self.scenario.get('rewrite_pipeline')=='world-v2' and newfacts!=self.facts():
+                        raise Rejected('A page cannot extend the fixed world specification')
+                    if self.scenario.get('rewrite_pipeline')!='world-v2':
+                        fact_merge(self.facts(),[{'key':k,'value':v} for k,v in newfacts.items()])
                     if document is None:
                         value={'missing':True,'title':canonical,'reason':'scenario-absent','attempt':attempt.name,
                                'record':original['record']}
@@ -158,16 +179,22 @@ class WorldService:
                                         (canonical,original['record']['revid'],json.dumps(value)))
                     else:
                         document=self.assets(document)
-                        tree=html.fromstring(document);text=project(tree)
+                        tree=html.fromstring(document,parser=html.HTMLParser(encoding='utf-8'));text=project(tree)
                         if len(document)>7_500_000 or len(text.encode())>7_500_000:raise CoverageMiss('Article exceeds response budget')
                         display=self.scenario.get('display_titles',{}).get(canonical,canonical)
-                        record=original['record']
+                        record=dict(original['record'])
+                        if self.scenario.get('rewrite_pipeline')=='world-v2':
+                            # Original editor commentary remains in the private source audit.
+                            record.update(comment='',user='')
                         page={'title':canonical,'display_title':display,'page_id':original['page_id'],
                             'revision_id':record['revid'],'revision_at':record['timestamp'],'sha256':sha(text.encode()),
                             'source_url':'https://en.wikipedia.org/w/index.php?oldid='+str(record['revid'])}
                         value={'title':canonical,'page':page,'record':record,'html_blob':self.blob(document),
                             'text_blob':self.blob(text.encode()),'attempt':attempt.name,'edits_blob':store.blob(encoded(edits)),
-                            'facts_sha256':sha(encoded(newfacts))}
+                            'facts_sha256':sha(encoded(newfacts)),
+                            'world_sha256':sha(encoded(self.scenario.get('world_model',{}))),
+                            'effective_date':base_scenario['_document_date'],
+                            'dependencies':sorted(newfacts)}
                         self.db.execute('INSERT INTO versions VALUES (?,?,?)',(canonical,record['revid'],json.dumps(value)))
                         for k,v in newfacts.items():self.db.execute('INSERT OR IGNORE INTO facts VALUES (?,?)',(k,v))
                         self.db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(display,canonical))

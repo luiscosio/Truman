@@ -97,8 +97,6 @@ def apply(document, wiki, spans, value):
 
 def generate(store, title, spans, scenario, validate):
     settings = {'model':'claude-sonnet-5','effort':'medium','max_tokens':8192, **generation_settings(scenario,'b')}
-    if not settings['model'].startswith('claude-sonnet-'):
-        raise ValueError('Generator B requires Claude Sonnet')
     previous_error = None
     for attempt in range(scenario.get('preparation', {}).get('max_attempts_per_page', 2)):
         payload = {'model':settings['model'], 'max_tokens':settings['max_tokens'], 'system':SYSTEM,

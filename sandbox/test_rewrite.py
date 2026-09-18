@@ -95,6 +95,32 @@ class CredentialTests(unittest.TestCase):
                 if file.is_file():self.assertNotIn(b'test-secret-value',file.read_bytes())
 
 
+class ProviderTests(unittest.TestCase):
+    def test_billing_failure_trips_circuit_without_another_request(self):
+        from unittest.mock import MagicMock
+        from urllib.error import HTTPError
+        import io
+        from sandbox.rewrite_model import call_claude, ProviderBlocked
+        with tempfile.TemporaryDirectory() as directory:
+            store=Store(Path(directory)/'audit');opener=MagicMock()
+            opener.open.side_effect=HTTPError('https://api.anthropic.com/v1/messages',400,'Bad Request',{},
+                io.BytesIO(encoded({'error':{'message':'Your credit balance is too low to access the Anthropic API.'}})))
+            with patch('sandbox.rewrite_model._blocked_reason',None),patch('sandbox.rewrite_model.api_key',return_value='secret'),patch('sandbox.rewrite_model.build_opener',return_value=opener):
+                for i in range(2):
+                    with self.assertRaises(ProviderBlocked):call_claude({'model':'claude-opus-5'},store,'Test',i)
+            self.assertEqual(opener.open.call_count,1)
+
+    def test_provider_model_identity_must_match(self):
+        from unittest.mock import MagicMock
+        from sandbox.rewrite_model import call_claude
+        with tempfile.TemporaryDirectory() as directory:
+            store=Store(Path(directory)/'audit');response=MagicMock();response.status=200;response.headers={}
+            response.read.return_value=encoded({'model':'claude-sonnet-5','stop_reason':'end_turn','content':[]})
+            opener=MagicMock();opener.open.return_value.__enter__.return_value=response
+            with patch('sandbox.rewrite_model.api_key',return_value='secret'),patch('sandbox.rewrite_model.build_opener',return_value=opener):
+                with self.assertRaisesRegex(ValueError,'different model'):call_claude({'model':'claude-opus-5'},store,'Test',0)
+
+
 class ReplayTests(unittest.TestCase):
     def setUp(self):
         temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup)
