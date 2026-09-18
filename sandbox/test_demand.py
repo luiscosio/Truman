@@ -1,0 +1,234 @@
+import base64
+import copy
+import json
+import sqlite3
+import tempfile
+import threading
+import time
+import unittest
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from unittest.mock import patch
+
+from sandbox.archive import encoded,verify,sha
+from sandbox.demand import WorldService,create,CoverageMiss
+from sandbox.demand_model import Rejected,fact_merge,rewrite,preserve_spacing
+from sandbox.rewrite_model import OutputTruncated
+
+SCENARIO={'id':'test','as_of':'2026-09-18','facts':['Elizabeth II is monarch.'],
+          'world_facts':{'uk.monarch':'Elizabeth II'},'generators':{'b':{'model':'claude-sonnet-5'}}}
+DOCUMENT=b'<html><head><title>Monarchy</title></head><body><div class="mw-parser-output"><section data-mw-section-id="0"><p>The monarch is Charles III.</p><table><tr><td>Charles III</td></tr></table></section></div></body></html>'
+
+
+class Source:
+    calls=[]
+    def __init__(self,root,cutoff):self.cutoff=cutoff
+    def acquire(self,title,revision=None):
+        Source.calls.append((title,revision,self.cutoff));time.sleep(.01)
+        if title=='Missing':return {'missing':True,'title':title}
+        return {'title':'Monarchy' if title=='Alias' else title,'page_id':42,
+                'record':{'revid':revision or 5,'timestamp':'2026-09-17T12:34:56Z','parentid':4,'user':'Editor','comment':'edit'},
+                'source':'original wiki','document':DOCUMENT}
+    def history(self,title,limit):return [{'revid':5-i} for i in range(limit)]
+    def search(self,query,limit):return [{'title':'Monarchy'}]
+    def api(self,**kwargs):return {'query':{'pages':[{'title':'Monarchy','revisions':[{'revid':4,'timestamp':'2026-09-16T00:00:00Z'}]}]}}
+
+
+def writer(document,scenario,facts,title,store,date):
+    return document.replace(b'Charles III',b'Elizabeth II'),{**facts,'charles.role':'heir'},[{'changed':True}]
+
+
+class DemandTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name)/'world';create(self.root,SCENARIO,'sha256:test')
+        Source.calls=[]
+        self.world=WorldService(self.root,Source,writer);self.addCleanup(self.world.close)
+
+    def body(self,result):
+        return base64.b64decode(result['body_base64']) if 'body_base64' in result else self.world.bytes(result['body'])
+
+    def test_concurrent_requests_generate_once_and_survive_restart(self):
+        other=WorldService(self.root,Source,writer)
+        try:
+            with ThreadPoolExecutor(8) as pool:
+                results=list(pool.map(lambda i:(self.world if i%2 else other).ensure('Monarchy'),range(8)))
+            self.assertEqual(len(Source.calls),1)
+            self.assertTrue(all(r==results[0] for r in results))
+        finally:other.close()
+        reopened=WorldService(self.root,lambda *a: self.fail('network on cache hit'),lambda *a:self.fail('model on cache hit'))
+        try:self.assertEqual(reopened.ensure('Monarchy'),results[0])
+        finally:reopened.close()
+        self.assertEqual(Source.calls[0][2],'2026-09-18T23:59:59Z')
+
+    def test_all_representations_and_redirects_agree(self):
+        page=self.world.handle('/wiki/Monarchy');self.assertEqual(page['status'],200)
+        self.assertIn(b'Elizabeth II',self.body(page));self.assertNotIn(b'Charles III',self.body(page))
+        raw=self.world.handle('/w/index.php?title=Monarchy&action=raw')
+        self.assertIn(b'Elizabeth II',self.body(raw));self.assertNotIn(b'Charles III',self.body(raw))
+        api=self.world.handle('/w/api.php?action=query&prop=extracts|revisions&explaintext&rvprop=content|timestamp&titles=Monarchy')
+        data=json.loads(self.body(api))['query']['pages']['42']
+        self.assertIn('Elizabeth II',data['extract']);self.assertIn('Elizabeth II',data['revisions'][0]['*'])
+        self.assertEqual(self.world.ensure('Alias')['title'],'Monarchy')
+        self.assertEqual(self.world.handle('/wiki/Monarchy'),page)
+
+    def test_rejected_generation_never_publishes_or_changes_facts(self):
+        self.world.writer=lambda *a: (_ for _ in ()).throw(Rejected('contradiction'))
+        r=self.world.handle('/wiki/Monarchy')
+        self.assertEqual(r['status'],503);self.assertEqual(r['coverage'],'generation_failed')
+        self.assertIsNone(self.world.read('pages','Monarchy'))
+        self.assertEqual(self.world.facts(),SCENARIO['world_facts'])
+        attempts=list((self.root/'attempts').iterdir());self.assertEqual(len(attempts),1);verify(attempts[0])
+        self.world.writer=writer
+        self.assertEqual(self.world.handle('/wiki/Monarchy')['status'],200)
+
+    def test_absence_is_distinct_from_unimplemented_route(self):
+        r=self.world.handle('/w/api.php?action=query&titles=Missing')
+        self.assertEqual(r['status'],200);self.assertEqual(r['coverage'],'world_missing')
+        self.assertIn('missing',json.loads(self.body(r))['query']['pages']['-1'])
+        self.assertEqual(self.world.handle('/w/api.php?action=delete&titles=Monarchy')['coverage'],'outside_snapshot')
+        self.assertEqual(len(Source.calls),1)
+
+    def test_freeze_is_immutable_and_never_generates(self):
+        original=self.world.handle('/wiki/Monarchy')
+        frozen=self.root.parent/'frozen';digest=self.world.freeze(frozen)
+        snapshot=WorldService(frozen,lambda *a:self.fail('frozen network'),lambda *a:self.fail('frozen generation'))
+        try:
+            self.assertEqual(snapshot.handle('/wiki/Monarchy'),original)
+            response=snapshot.handle('/api/rest_v1/page/summary/Monarchy')
+            self.assertEqual(response['status'],200)
+            self.assertIn(b'Elizabeth II',base64.b64decode(response['body_base64']))
+            self.assertEqual(snapshot.handle('/wiki/Uncaptured')['coverage'],'outside_snapshot')
+            self.assertEqual(verify(frozen),digest)
+        finally:snapshot.close()
+
+    def test_shared_fact_conflicts_fail_closed(self):
+        with self.assertRaises(Rejected):fact_merge({'uk.monarch':'Elizabeth II'},[{'key':'uk.monarch','value':'Charles III'}])
+
+    def test_only_explicit_absent_topics_can_be_removed(self):
+        from sandbox.archive import Store
+        store=Store(self.root.parent/'absent')
+        scenario={**SCENARIO,'absent_titles':['Coronation']}
+        with patch('sandbox.demand_model.ask',side_effect=AssertionError('Explicit absence does not need inference')):
+            document,facts,edits=rewrite(DOCUMENT,scenario,self.world.facts(),'Coronation',store,'2026-09-17T12:00:00Z')
+        self.assertIsNone(document);self.assertEqual(facts,self.world.facts());self.assertEqual(edits,[])
+
+    def test_bridge_does_not_emit_python_server_fingerprint(self):
+        from sandbox.demand_bridge import Handler
+        self.assertEqual(Handler.version_string(object()),'MediaWiki')
+
+    def test_inline_boundaries_preserve_original_whitespace(self):
+        self.assertEqual(preserve_spacing(' is exercised by the King, the ','is exercised by the Queen, the'),
+                         ' is exercised by the Queen, the ')
+        self.assertEqual(preserve_spacing(' Charles ',''),'')
+
+    def test_revision_requested_first_is_reused_as_current(self):
+        calls=[]
+        def counted(*args):calls.append(True);return writer(*args)
+        self.world.writer=counted
+        revision=self.world.ensure('Monarchy',5)
+        self.assertEqual(self.world.ensure('Monarchy'),revision)
+        self.assertEqual(len(calls),1)
+
+    def test_absent_event_revision_is_cached(self):
+        self.world.writer=lambda document,scenario,facts,*args:(None,facts,[])
+        absent=self.world.ensure('Coronation',5)
+        self.assertTrue(absent['missing'])
+        self.assertEqual(self.world.ensure('Coronation',5),absent)
+        self.assertEqual(len(Source.calls),1)
+
+    def test_frozen_database_rejects_writes_and_can_be_copied_for_run(self):
+        self.world.ensure('Monarchy')
+        frozen=self.root.parent/'first';original=self.world.freeze(frozen)
+        snapshot=WorldService(frozen)
+        try:
+            with self.assertRaises(sqlite3.OperationalError):snapshot.db.execute('DELETE FROM facts')
+            second=self.root.parent/'second';seal=snapshot.freeze(second)
+            self.assertEqual(verify(second),seal)
+            self.assertEqual(verify(frozen),original)
+        finally:snapshot.close()
+
+    def test_history_is_lazy_stable_and_original_order_is_retained(self):
+        first=self.world.ensure('Monarchy');self.assertEqual(len(Source.calls),1)
+        history=self.world.history('Monarchy',2)
+        self.assertEqual([a['record']['revid'] for a in history],[5,4])
+        self.assertEqual(len(Source.calls),2)
+        self.assertEqual(self.world.ensure('Monarchy'),first)
+        self.assertEqual(self.world.history('Monarchy',2),history);self.assertEqual(len(Source.calls),2)
+
+    def test_assets_are_same_origin_without_embedded_base64(self):
+        self.world.db.execute('BEGIN IMMEDIATE')
+        document=self.world.assets(b'<img src="data:image/png;base64,aGVsbG8=">');self.world.db.commit()
+        self.assertNotIn(b'base64',document)
+        result=self.world.handle('/w/resources/'+sha(b'hello'))
+        self.assertEqual(result['mime'],'image/png');self.assertEqual(self.body(result),b'hello')
+
+    def test_model_can_edit_infobox_and_prose_and_independent_review_rejects(self):
+        from sandbox.archive import Store
+        store=Store(self.root.parent/'model')
+        responses=[{'exists':True,'rewrite':True,'reason':'wrong monarch'},
+            {'edits':[{'id':0,'text':'The monarch is Elizabeth II.'},{'id':1,'text':'Elizabeth II'}],'facts':[]},
+            {'accepted':True,'issues':[]}]
+        with patch('sandbox.demand_model.ask',side_effect=responses):
+            result,_,_=rewrite(DOCUMENT,SCENARIO,self.world.facts(),'Monarchy',store,'2026-09-17T12:00:00Z')
+        self.assertNotIn(b'Charles III',result);self.assertIn(b'<td>Elizabeth II</td>',result)
+        with patch('sandbox.demand_model.ask',side_effect=[responses[1],{'accepted':False,'issues':['conflict']}]),self.assertRaises(Rejected):
+            rewrite(DOCUMENT,{**SCENARIO,'_repair_pass':2},self.world.facts(),'Monarchy',store,'2026-09-17T12:00:00Z')
+
+    def test_review_repairs_candidate_without_losing_earlier_edits(self):
+        from sandbox.archive import Store,journal
+        store=Store(self.root.parent/'repair')
+        replies=[{'exists':True,'rewrite':True,'reason':'wrong monarch'},
+            {'edits':[{'id':0,'text':'The monarch is Elizabeth II.'}],'facts':[]},
+            {'accepted':False,'issues':['infobox remains wrong']},
+            {'edits':[{'id':1,'text':'Elizabeth II'}],'facts':[]},
+            {'accepted':True,'issues':[]}]
+        with patch('sandbox.demand_model.ask',side_effect=replies):
+            result,_,edits=rewrite(DOCUMENT,SCENARIO,self.world.facts(),'Monarchy',store,'2026-09-17T12:00:00Z')
+        self.assertIn(b'The monarch is Elizabeth II.',result);self.assertIn(b'<td>Elizabeth II</td>',result)
+        self.assertEqual(len(edits),2)
+        self.assertEqual(len([e for e in journal(store.root/'events.jsonl') if e['kind']=='consistency_repair']),1)
+
+    def test_truncated_chunk_is_split_without_publishing_partial_output(self):
+        from sandbox.archive import Store,journal
+        store=Store(self.root.parent/'split')
+        replies=[{'rewrite':True,'reason':'wrong monarch'},OutputTruncated('max_tokens'),
+            {'edits':[{'id':0,'text':'The monarch is Elizabeth II.'}],'facts':[]},
+            {'edits':[{'id':1,'text':'Elizabeth II'}],'facts':[]},
+            {'accepted':True,'issues':[]}]
+        with patch('sandbox.demand_model.ask',side_effect=replies):
+            result,_,_=rewrite(DOCUMENT,SCENARIO,self.world.facts(),'Monarchy',store,'2026-09-17T12:00:00Z')
+        self.assertNotIn(b'Charles III',result)
+        self.assertTrue(any(e['kind']=='chunk_split' for e in journal(store.root/'events.jsonl')))
+
+    def test_link_and_image_removal_and_malformed_patch_retry(self):
+        from sandbox.archive import Store,journal
+        document=b'<html><body><div class="mw-parser-output"><p><a href="/wiki/File:King.jpg"><img src="/king.jpg"></a></p></div></body></html>'
+        store=Store(self.root.parent/'patches')
+        responses=[{'exists':True,'rewrite':True,'reason':'wrong portrait'},
+            {'edits':[{'id':0,'text':'a caption is not a URL'}],'facts':[]},
+            {'edits':[{'id':0,'text':''},{'id':1,'text':''}],'facts':[]},
+            {'accepted':True,'issues':[]}]
+        with patch('sandbox.demand_model.ask',side_effect=responses):
+            result,_,_=rewrite(document,SCENARIO,self.world.facts(),'Monarchy',store,'2026-09-17T12:00:00Z')
+        self.assertNotIn(b'<img',result);self.assertNotIn(b'href=',result)
+        self.assertTrue(any(e['kind']=='patch_rejected' for e in journal(store.root/'events.jsonl')))
+
+    def test_acquisition_pins_cutoff_and_rejects_future_revision(self):
+        from sandbox.demand_source import WikipediaSource
+        from unittest.mock import Mock
+        source=object.__new__(WikipediaSource);source.cutoff='2026-09-18T00:00:00Z'
+        source.capture=Mock()
+        record={'revid':5,'timestamp':'2026-09-17T12:00:00Z','slots':{'main':{'content':'original'}}}
+        source.api=Mock(return_value={'query':{'pages':[{'title':'Monarchy','pageid':42,'revisions':[record]}]}})
+        source.capture.fetch.return_value=b'<script>"wgRevisionId":5</script>'
+        source.capture.offline.return_value=(DOCUMENT,0)
+        source.acquire('Monarchy')
+        query=source.api.call_args.kwargs
+        self.assertEqual(query['rvstart'],source.cutoff);self.assertEqual(query['rvdir'],'older')
+        self.assertEqual(query['rvlimit'],1)
+        record['timestamp']='2026-09-19T00:00:00Z'
+        with self.assertRaisesRegex(ValueError,'newer than world cutoff'):source.acquire(revision=5)
+
+
+if __name__=='__main__':unittest.main()

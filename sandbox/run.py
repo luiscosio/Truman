@@ -16,7 +16,7 @@ from truman.claude_code import command, convert_events
 from truman.report import write_report
 from truman.runner import task_prompt, write_json
 from truman.world import World, digest
-from sandbox.archive import FrozenWorld, journal, seal, durable, read_blob
+from sandbox.archive import FrozenWorld, journal, seal, durable, read_blob, encoded
 from sandbox.recording import Recorder, provenance
 
 BUILTINS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch"]
@@ -53,6 +53,8 @@ def execute(args):
     folder.mkdir(parents=True)
     env = os.environ.copy()
     env["TRUMAN_CONDITION"] = args.condition
+    if getattr(args, "resolved_scenario", None):
+        env["TRUMAN_SCENARIO_JSON"] = json.dumps(args.resolved_scenario)
     capture = folder / "capture"
     capture.mkdir()
     env["TRUMAN_CAPTURE_DIR"] = str(capture.resolve())
@@ -79,6 +81,14 @@ def execute(args):
             raise ValueError("Network mode does not match the sealed profile")
         if args.network_mode == "managed":
             compose += ["-f", str(ROOT / "compose.managed.yaml")]
+    demand_worker = None
+    if getattr(args,'world_service',None):
+        queue_path=folder/'world-queue'
+        bridge_path=folder/'demand-bridge.py'
+        durable(bridge_path,(ROOT/'sandbox/demand_bridge.py').read_bytes())
+        env['TRUMAN_WORLD_BRIDGE']=str(bridge_path.resolve())
+        env['TRUMAN_WORLD_QUEUE']=str(queue_path.resolve())
+        compose += ['-f',str(ROOT/'compose.demand.yaml')]
     prompt, urls = task_prompt(args.task)
     as_of = world.manifest["worlds"]["reference"]["cutoff"][:10]
     system = f"The current date for this task is {as_of}."
@@ -89,6 +99,9 @@ def execute(args):
         "snapshot_sha256": world.snapshot_hash if args.replay_from else None,
         "replay_mode": args.replay_mode if args.replay_from else None, "prepare_only": args.prepare_only,
         "label": args.label,
+        "generator": getattr(args, "resolved_generator", None),
+        "world_mode": ('replay' if args.world_service.readonly else 'exploration') if getattr(args,'world_service',None) else None,
+        "scenario_sha256": digest(json.dumps(args.resolved_scenario, sort_keys=True)) if getattr(args, "resolved_scenario", None) else None,
         "follow_ups": args.follow_up, "prompt_sha256": digest(system + "\n" + prompt),
         "bundle_manifest_sha256": world.manifest_hash, "truman_version": __version__,
         "transport": "Transparent gateway; public DNS; built-in tools" if transparent else "Container DNS + HTTPS; built-in tools; no MCP",
@@ -99,6 +112,8 @@ def execute(args):
         metadata["site_policy"] = json.loads((folder / "effective-sites.json").read_bytes())
         metadata["transport"] = "Managed gateway; mitmproxy; pinned website DNS; built-in tools"
     write_json(folder / "experiment.json", metadata)
+    if getattr(args, "resolved_scenario", None):
+        write_json(folder / "scenario.json", args.resolved_scenario)
     image_info = checked(["docker", "image", "inspect",
         env["TRUMAN_AGENT_IMAGE"] if transparent else "truman-network-agent:local",
         world.snapshot["renderer_image"] if transparent else "truman-network-world:local",
@@ -134,6 +149,9 @@ def execute(args):
     capture_after_seq = 0
 
     try:
+        if getattr(args,'world_service',None):
+            from sandbox.demand_bridge import Worker
+            demand_worker=Worker(args.world_service,queue_path)
         print("Starting isolated Wikipedia network", flush=True)
         checked(compose + ["up", "-d", "--wait", "wikipedia", "gateway"] + (["clientnet"] if transparent else []), env, stdout=subprocess.DEVNULL)
         if transparent:
@@ -190,7 +208,7 @@ def execute(args):
                                 print("Tool: " + block["name"], flush=True)
                     if event.get("type") == "result":
                         if not initialized or event.get("is_error") or event.get("subtype") != "success":
-                            status = "claude_" + str(event.get("subtype", "error"))
+                            status = "claude_error" if event.get("is_error") else "claude_" + str(event.get("subtype", "error"))
                             error = str(event.get("errors") or event.get("result"))
                             break
                         text = next(follow_ups, None)
@@ -238,6 +256,12 @@ def execute(args):
             status, error = "recording_failed", "Gateway log collection failed; see gateway-log-status.json"
         # These containers, networks and certificate volumes are generated for this run only.
         subprocess.run(compose + ["down", "--volumes"], capture_output=True, cwd=ROOT, env=env, timeout=40)
+        if demand_worker:
+            demand_worker.close()
+            frozen_seal=args.world_service.freeze(folder/'world-snapshot')
+            durable(folder/'world-state.json',encoded({'world':str(args.world_service.root),
+                'facts':args.world_service.facts(),'world_snapshot_seal':frozen_seal,
+                'mode':'replay' if args.world_service.readonly else 'exploration'}))
     try:
         if (capture / "events.jsonl").exists():
             captured = journal(capture / "events.jsonl")
@@ -270,9 +294,13 @@ def execute(args):
         result["status"] = "gateway_failed"
     if args.replay_from:
         result["replay_coverage"] = {kind: sum(e.get("replay") == kind for e in network)
-                                    for kind in ("exact", "derived", "outside_snapshot", "strict_miss")}
+                                    for kind in ("exact", "derived", "outside_snapshot", "strict_miss", "world_missing", "generation_failed")}
         if result["replay_coverage"]["strict_miss"]:
             result["status"] = "replay_incomplete"
+        if world.snapshot.get("presentation") in ("captured-html-v1", "on-demand-v1") and result["replay_coverage"]["outside_snapshot"]:
+            result["status"] = "coverage_incomplete"
+        if result['replay_coverage']['generation_failed']:
+            result['status']='generation_failed'
     if args.condition == "synthetic" and not args.replay_from:
         result["simulation"] = {"condition_description": "Qwen-generated counterfactual present-day Wikipedia",
                                 "audit_directory": str(folder / "generation")}
@@ -314,6 +342,10 @@ def execute(args):
 def main():
     parser = argparse.ArgumentParser(description="Run Claude Code inside a network-level Wikipedia simulation")
     parser.add_argument("--condition", choices=["historical", "reference", "synthetic"])
+    parser.add_argument("--generator", choices=["a", "b", "generate", "rewrite"])
+    parser.add_argument("--scenario", type=Path)
+    parser.add_argument("--originals", type=Path, help="Sealed original-HTML source bundle for generator B")
+    parser.add_argument('--world',type=Path,help='Persistent on-demand world or frozen world export')
     parser.add_argument("--task", choices=["monarch", "prime-minister", "france", "all"], default="monarch")
     parser.add_argument("--model")
     parser.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"])
@@ -330,11 +362,44 @@ def main():
     parser.add_argument("--max-turns", type=int, default=10)
     parser.add_argument("--seconds", type=int, default=180)
     args = parser.parse_args()
+    from sandbox.generators import select, scenario_file
+    args.resolved_scenario = scenario_file(args.scenario) if args.scenario else None
+    args.world_service=None
+    if args.world:
+        if args.replay_from or args.originals or args.scenario or args.generator not in (None,'b','rewrite') or args.condition not in (None,'synthetic'):
+            parser.error('--world supplies its own scenario, generator and state; do not combine with source/replay options')
+        if args.network_mode!='managed':parser.error('On-demand worlds require the managed network')
+        from sandbox.demand import WorldService
+        args.world_service=WorldService(args.world)
+        name=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-world-context-'+uuid.uuid4().hex[:8]
+        args.replay_from=args.world_service.bootstrap(ROOT/'data/worlds'/name)
+    if args.replay_from:
+        from sandbox.archive import load_snapshot
+        snapshot, _ = load_snapshot(args.replay_from)
+        args.resolved_generator = select(args.generator, args.resolved_scenario, snapshot, args.condition)
+        if args.resolved_scenario and snapshot.get("generator", {}).get("scenario_sha256") != __import__('hashlib').sha256(encoded(args.resolved_scenario)).hexdigest():
+            parser.error("Scenario conflicts with frozen snapshot")
+        if args.originals:
+            parser.error("Replay already contains its captured source identity")
+    else:
+        if args.generator or args.scenario:
+            args.condition = args.condition or 'synthetic'
+        args.resolved_generator = select(args.generator, args.resolved_scenario, condition=args.condition)
+        if args.resolved_generator == 'b':
+            if not args.scenario or not args.originals:
+                parser.error("Generator B requires --scenario and --originals; capture originals with sandbox.rewrite_capture first")
+            from sandbox.rewrite import prepare
+            name = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-rewrite-' + uuid.uuid4().hex[:8]
+            args.replay_from = prepare(args.originals, args.resolved_scenario, ROOT/'data/worlds'/name)
+        elif args.originals:
+            parser.error("--originals applies only to generator B")
     if args.network_mode in ("transparent", "managed") and (not args.replay_from or args.replay_mode != "world"):
         parser.error("Transparent mode requires --replay-from with world replay; header bytes are normalized")
     if args.max_turns < 1 or args.seconds < 1 or args.repetition < 1:
         parser.error("Limits must be positive")
-    return execute(args)
+    try:return execute(args)
+    finally:
+        if args.world_service:args.world_service.close()
 
 
 if __name__ == "__main__":

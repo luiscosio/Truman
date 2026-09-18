@@ -21,6 +21,22 @@ POLICY = {"schema_version": 1, "default": "block",
 
 
 class ManagedTests(unittest.TestCase):
+    def test_generation_failure_keeps_distinct_audit_classification(self):
+        import time
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryFile() as stream:
+            addon=FrozenHTTP();addon.capture=Store(temp);addon.sites=validate(POLICY)
+            addon.world=SimpleNamespace(condition='synthetic',lookup=lambda *a:None,evidence=lambda *a:None)
+            addon.writer=Mock();addon.stream=stream
+            flow=SimpleNamespace(id='failed',request=http.Request.make('GET','https://en.wikipedia.org/wiki/Test'),
+                response=http.Response.make(503,b'Unavailable'),client_conn=SimpleNamespace(alpn=None,id='connection'),
+                metadata={'host':'en.wikipedia.org','representation':b'Unavailable','started':time.monotonic(),
+                          'origin_headers':[('X-World-Coverage','generation_failed')]})
+            flow.copy=lambda:flow
+            with patch.dict('os.environ',{'WORLD_ON_DEMAND':'1'}):addon.response(flow)
+            result=next(e for e in journal(Path(temp)/'events.jsonl') if e['kind']=='http_response')
+            self.assertEqual(result['replay'],'generation_failed')
+
     def test_overlapping_policies_rejected(self):
         policy = copy.deepcopy(POLICY)
         policy["blacklisted"][0]["hosts"].append("en.wikipedia.org")
@@ -51,6 +67,8 @@ class ManagedTests(unittest.TestCase):
         self.assertEqual(fields["cache-control"], "max-age=60")
         self.assertEqual(fields["content-length"], "3")
         self.assertFalse(set(fields) & {"connection", "x-internal", "server"})
+        private=normalized_headers([('X-World-Coverage','derived'),('X-World-Evidence','internal')],0)
+        self.assertFalse(any(k.lower().startswith('x-world-') for k,v in private))
 
     def test_head_fetches_full_representation_without_transmitting_body(self):
         with tempfile.TemporaryDirectory() as temp:

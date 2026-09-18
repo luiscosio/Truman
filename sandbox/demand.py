@@ -1,0 +1,313 @@
+"""Transactional persistent world. Host-only generation, immutable committed versions."""
+import argparse
+import contextlib
+import base64
+import datetime as dt
+import json
+import mimetypes
+import re
+import sqlite3
+import threading
+import uuid
+from pathlib import Path
+from lxml import html
+
+from sandbox.archive import Store, durable, encoded, read_blob, seal, sha, verify
+from sandbox.demand_model import rewrite, project, fact_merge
+from sandbox.demand_source import WikipediaSource
+from sandbox.generators import generation_settings
+from truman.world import title_key
+
+
+class CoverageMiss(ValueError):pass
+
+
+def create(root,scenario,renderer):
+    root=Path(root)
+    generation_settings(scenario,'b')
+    cutoff=scenario.get('source_cutoff',scenario['as_of']+'T23:59:59Z')
+    dt.datetime.fromisoformat(cutoff.replace('Z','+00:00'))
+    if cutoff[:10]!=scenario['as_of']:raise ValueError('World date and source cutoff must match')
+    root.mkdir(parents=True,exist_ok=False)
+    for name in ('attempts','blobs'): (root/name).mkdir()
+    durable(root/'world.json',encoded({'schema_version':1,'scenario':scenario,'source_cutoff':cutoff,
+        'renderer_image':renderer,'created_at':dt.datetime.now(dt.timezone.utc).isoformat(),
+        'limitations':['Captured templates use capture-time expansion.',
+            'Raw wikitext is projected from the accepted DOM, not reconstructed original templates.',
+            'Search rankings are acquired at request time and then cached.',
+            'Independent model review is not proof of global semantic consistency.']}))
+    with contextlib.closing(sqlite3.connect(root/'world.sqlite')) as db:
+        db.executescript('''CREATE TABLE versions (key TEXT, revision INTEGER, value TEXT, PRIMARY KEY(key,revision));
+CREATE TABLE pages (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE aliases (alias TEXT PRIMARY KEY, target TEXT);
+CREATE TABLE facts (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE cache (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE receipts (id TEXT PRIMARY KEY, value TEXT);''')
+        db.executemany('INSERT INTO facts VALUES (?,?)',scenario.get('world_facts',{}).items())
+        db.commit()
+    for name in ('demand.py','demand_model.py','demand_source.py','demand_routes.py','demand_bridge.py','rewrite_model.py'):
+        path=Path(__file__).with_name(name)
+        if path.exists():durable(root/('code-'+name),path.read_bytes())
+    return root
+
+
+class WorldService:
+    def __init__(self,root,source_factory=WikipediaSource,writer=rewrite):
+        self.root=Path(root);self.config=json.loads((self.root/'world.json').read_bytes())
+        self.scenario=self.config['scenario'];self.source_factory=source_factory;self.writer=writer
+        self.code={p.name:p.read_bytes() for p in Path(__file__).parent.glob('*.py') if p.name.startswith(('demand','rewrite_'))}
+        self.readonly=(self.root/'seal.json').exists()
+        if self.readonly:verify(self.root)
+        self.lock=threading.RLock()
+        database=(self.root/'world.sqlite').resolve()
+        self.db=sqlite3.connect(database.as_uri()+'?mode=ro' if self.readonly else database,
+                               uri=self.readonly,timeout=600,check_same_thread=False)
+        self.db.execute('PRAGMA busy_timeout=600000')
+
+    def close(self):self.db.close()
+
+    def blob(self,data):
+        key=sha(data);p=self.root/'blobs'/key
+        if not p.exists():durable(p,data)
+        elif p.read_bytes()!=data:raise ValueError('Corrupt world blob')
+        return key
+
+    def bytes(self,key):return read_blob(self.root,key)
+
+    def facts(self):return dict(self.db.execute('SELECT key,value FROM facts'))
+
+    def read(self,table,key):
+        if table not in ('pages','cache'):raise ValueError('Invalid table')
+        row=self.db.execute('SELECT value FROM '+table+' WHERE key=?',(key,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def resolve(self,title):
+        title=title_key(title)
+        row=self.db.execute('SELECT target FROM aliases WHERE alias=?',(title,)).fetchone()
+        return row[0] if row else title
+
+    def attempt(self):
+        path=self.root/'attempts'/uuid.uuid4().hex;path.mkdir()
+        return path,Store(path)
+
+    def assets(self,document):
+        # Content-addressed same-origin resources avoid dumping base64 images into WebFetch.
+        def replace(match):
+            mime,data=match[1],match[2]
+            raw=base64.b64decode(data,validate=True);key=self.blob(raw)
+            self.db.execute('INSERT OR IGNORE INTO cache VALUES (?,?)',('asset:'+key,json.dumps({'blob':key,'mime':mime})))
+            return '/w/resources/'+key
+        return re.sub(r'data:([^;"\s]+);base64,([A-Za-z0-9+/=]+)',replace,document.decode()).encode()
+
+    def ensure(self,title,revision=None):
+        with self.lock:
+            key=self.resolve(title)
+            if revision:
+                row=self.db.execute('SELECT value FROM versions WHERE key=? AND revision=?',(key,revision)).fetchone()
+                cached=json.loads(row[0]) if row else None
+            else:cached=self.read('pages',key)
+            if cached is not None:return cached
+            if self.readonly:raise CoverageMiss('Article/revision absent from frozen world: '+key)
+            self.db.execute('BEGIN IMMEDIATE')
+            attempt=None
+            try:
+                # Recheck after cross-process transaction ownership.
+                key=self.resolve(title)
+                row=self.db.execute('SELECT value FROM versions WHERE key=? AND revision=?',(key,revision)).fetchone() if revision else None
+                cached=(json.loads(row[0]) if row else None) if revision else self.read('pages',key)
+                if cached is not None:self.db.commit();return cached
+                limits=self.scenario.get('on_demand',{})
+                if self.db.execute('SELECT count(*) FROM versions').fetchone()[0]>=limits.get('max_versions',60):raise CoverageMiss('World version budget exhausted')
+                if len(list((self.root/'attempts').iterdir()))>=limits.get('max_attempts',100):raise CoverageMiss('World attempt budget exhausted')
+                attempt,store=self.attempt()
+                durable(attempt/'context.json',encoded({'title':key,'revision':revision,'facts':self.facts(),
+                    'scenario_sha256':sha(encoded(self.scenario)),
+                    'code':{name:store.blob(data) for name,data in self.code.items()}}))
+                source=self.source_factory(attempt/'source',self.config['source_cutoff'])
+                original=source.acquire(key,revision)
+                if original.get('missing'):
+                    value={'missing':True,'title':key,'reason':'original-missing','attempt':attempt.name}
+                else:
+                    canonical=title_key(original['title'])
+                    # Redirect aliases converge before model generation.
+                    existing=self.read('pages',canonical) if not revision else None
+                    if existing is None:
+                        row=self.db.execute('SELECT value FROM versions WHERE key=? AND revision=?',
+                                            (canonical,original['record']['revid'])).fetchone()
+                        existing=json.loads(row[0]) if row else None
+                    if existing is not None:
+                        self.db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(key,canonical))
+                        if not revision:self.db.execute('INSERT OR IGNORE INTO pages VALUES (?,?)',(canonical,json.dumps(existing)))
+                        durable(attempt/'reuse.json',encoded({'canonical':canonical}));seal(attempt);self.db.commit();return existing
+                    durable(attempt/'original.json',encoded({k:v for k,v in original.items() if k not in ('document','source')}))
+                    store.event('original',html_blob=store.blob(original['document']),source_blob=store.blob(original['source'].encode()))
+                    from sandbox.demand_model import Rejected
+                    for retry in range(2):
+                        try:
+                            document,newfacts,edits=self.writer(original['document'],rewrite_scenario if retry else self.scenario,self.facts(),canonical,store,original['record']['timestamp'])
+                            break
+                        except Rejected as exc:
+                            store.event('rewrite_rejected',attempt=retry,error=str(exc))
+                            if retry or str(exc).startswith('Consistency review rejected:'):raise
+                            rewrite_scenario={**self.scenario,'_validation_feedback':str(exc)}
+                    fact_merge(self.facts(),[{'key':k,'value':v} for k,v in newfacts.items()])
+                    if document is None:
+                        value={'missing':True,'title':canonical,'reason':'scenario-absent','attempt':attempt.name,
+                               'record':original['record']}
+                        self.db.execute('INSERT INTO versions VALUES (?,?,?)',
+                                        (canonical,original['record']['revid'],json.dumps(value)))
+                    else:
+                        document=self.assets(document)
+                        tree=html.fromstring(document);text=project(tree)
+                        if len(document)>7_500_000 or len(text.encode())>7_500_000:raise CoverageMiss('Article exceeds response budget')
+                        display=self.scenario.get('display_titles',{}).get(canonical,canonical)
+                        record=original['record']
+                        page={'title':canonical,'display_title':display,'page_id':original['page_id'],
+                            'revision_id':record['revid'],'revision_at':record['timestamp'],'sha256':sha(text.encode()),
+                            'source_url':'https://en.wikipedia.org/w/index.php?oldid='+str(record['revid'])}
+                        value={'title':canonical,'page':page,'record':record,'html_blob':self.blob(document),
+                            'text_blob':self.blob(text.encode()),'attempt':attempt.name,'edits_blob':store.blob(encoded(edits)),
+                            'facts_sha256':sha(encoded(newfacts))}
+                        self.db.execute('INSERT INTO versions VALUES (?,?,?)',(canonical,record['revid'],json.dumps(value)))
+                        for k,v in newfacts.items():self.db.execute('INSERT OR IGNORE INTO facts VALUES (?,?)',(k,v))
+                        self.db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(display,canonical))
+                    self.db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(key,canonical));key=canonical
+                if not revision:self.db.execute('INSERT INTO pages VALUES (?,?)',(key,json.dumps(value)))
+                durable(attempt/'accepted.json',encoded(value));seal(attempt)
+                self.db.commit()
+                return value
+            except Exception as exc:
+                self.db.rollback()
+                if attempt and not (attempt/'seal.json').exists():
+                    durable(attempt/'failure.json',encoded({'error':str(exc)}));seal(attempt)
+                raise
+
+    def cached_operation(self,key,operation):
+        with self.lock:
+            existing=self.read('cache',key)
+            if existing is not None:return existing
+            if self.readonly:raise CoverageMiss('Query absent from frozen world')
+            self.db.execute('BEGIN IMMEDIATE')
+            attempt=None
+            try:
+                existing=self.read('cache',key)
+                if existing is not None:self.db.commit();return existing
+                if len(list((self.root/'attempts').iterdir()))>=self.scenario.get('on_demand',{}).get('max_attempts',100):
+                    raise CoverageMiss('World attempt budget exhausted')
+                attempt,store=self.attempt()
+                source=self.source_factory(attempt/'source',self.config['source_cutoff'])
+                value=operation(source)
+                durable(attempt/'accepted.json',encoded(value));seal(attempt)
+                self.db.execute('INSERT OR IGNORE INTO cache VALUES (?,?)',(key,json.dumps(value)))
+                self.db.commit()
+                return self.read('cache',key)
+            except Exception as exc:
+                self.db.rollback()
+                if attempt and not (attempt/'seal.json').exists():durable(attempt/'failure.json',encoded({'error':str(exc)}));seal(attempt)
+                raise
+
+    def history(self,title,limit):
+        key=self.resolve(title)
+        records=self.cached_operation('history:'+key+':'+str(limit),lambda source:source.history(key,limit))
+        return [self.ensure(key,r['revid']) for r in records]
+
+    def revision(self,revision):
+        row=self.db.execute('SELECT value FROM versions WHERE revision=?',(revision,)).fetchone()
+        if row:return json.loads(row[0])
+        def lookup(source):
+            data=source.api(action='query',revids=revision,prop='revisions',rvprop='ids|timestamp')
+            page=data['query']['pages'][0]
+            if not page.get('revisions') or page['revisions'][0]['timestamp']>self.config['source_cutoff']:
+                raise CoverageMiss('Revision outside fixed cutoff')
+            return page['title']
+        title=self.cached_operation('revision-title:'+str(revision),lookup)
+        return self.ensure(title,revision)
+
+    def bootstrap(self,destination):
+        destination=Path(destination);destination.mkdir(parents=True,exist_ok=False)
+        durable(destination/'snapshot.json',encoded({'schema_version':1,'kind':'truman-frozen-world',
+            'condition':'synthetic','as_of':self.scenario['as_of'],'articles':{},'routes':{},
+            'presentation':'on-demand-v1','bundle_manifest_sha256':sha(encoded(self.config)),
+            'renderer_image':self.config['renderer_image'],
+            'generator':{'id':'b','mode':'frozen' if self.readonly else 'on-demand','provider':'anthropic',
+                         'model':generation_settings(self.scenario,'b').get('model','claude-sonnet-5')}}))
+        seal(destination);return destination
+
+    def search(self,query,limit):
+        hits=self.cached_operation('search:'+query+':'+str(limit),lambda source:source.search(query,limit))
+        return [self.ensure(hit['title']) for hit in hits]
+
+    def handle(self,target):
+        from sandbox.demand_routes import respond
+        with self.lock:
+            key='response:'+target
+            cached=self.read('cache',key)
+            if cached:return cached
+            result=respond(self,target)
+            status,mime,body,headers,coverage,proof=result
+            value={'status':status,'mime':mime,'body':sha(body),'headers':headers,'coverage':coverage,'evidence':proof}
+            if self.readonly:
+                # Derived replay may create a response in memory, never mutate the snapshot.
+                value['body_base64']=base64.b64encode(body).decode()
+            else:
+                value['body']=self.blob(body)
+                with self.db:
+                    self.db.execute('INSERT INTO receipts VALUES (?,?)',(uuid.uuid4().hex,json.dumps({'target':target,**value})))
+                    if coverage not in ('outside_snapshot','generation_failed'):
+                        self.db.execute('INSERT OR IGNORE INTO cache VALUES (?,?)',(key,json.dumps(value)))
+            return value
+
+    def freeze(self,destination):
+        with self.lock:
+            destination=Path(destination);destination.mkdir(parents=True,exist_ok=False)
+            import shutil
+            # SQLite's backup API yields a consistent transaction snapshot, including in another process.
+            if not self.readonly:self.db.execute('BEGIN IMMEDIATE')
+            try:
+                backup=sqlite3.connect(destination/'world.sqlite')
+                reader=sqlite3.connect(self.root/'world.sqlite')
+                reader.backup(backup);reader.close();backup.close()
+                for path in self.root.iterdir():
+                    if path.name.startswith('world.sqlite') or path.name in ('seal.json','frozen.json'):continue
+                    if path.is_dir():shutil.copytree(path,destination/path.name)
+                    else:shutil.copy2(path,destination/path.name)
+                durable(destination/'frozen.json',encoded({'source':str(self.root),'config_sha256':sha(encoded(self.config))}))
+                return seal(destination)
+            finally:self.db.rollback()
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='action',required=True)
+    new=sub.add_parser('create');new.add_argument('--world',type=Path,required=True);new.add_argument('--scenario',type=Path,required=True)
+    request=sub.add_parser('request');request.add_argument('--world',type=Path,required=True);request.add_argument('--path',required=True)
+    freeze=sub.add_parser('freeze');freeze.add_argument('--world',type=Path,required=True);freeze.add_argument('--output',type=Path,required=True)
+    serve=sub.add_parser('serve');serve.add_argument('--world',type=Path,required=True);serve.add_argument('--port',type=int,default=8767)
+    args=parser.parse_args()
+    if args.action=='create':
+        import subprocess
+        renderer=subprocess.check_output(['docker','image','inspect','truman-network-world:local','--format','{{.Id}}'],text=True).strip()
+        print(create(args.world,json.loads(args.scenario.read_bytes()),renderer));return
+    world=WorldService(args.world)
+    try:
+        if args.action=='freeze':print(world.freeze(args.output))
+        elif args.action=='serve':
+            if not world.readonly:raise ValueError('Browser preview requires a frozen world')
+            from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+            class Preview(BaseHTTPRequestHandler):
+                def log_message(self,*args):pass
+                def do_GET(self):
+                    result=world.handle(self.path)
+                    data=base64.b64decode(result['body_base64']) if 'body_base64' in result else world.bytes(result['body'])
+                    self.send_response(result['status']);self.send_header('Content-Type',result['mime']);self.send_header('Content-Length',str(len(data)))
+                    for k,v in result['headers'].items():self.send_header(k,v)
+                    self.end_headers();self.wfile.write(data)
+            print('Frozen preview: http://127.0.0.1:'+str(args.port),flush=True)
+            ThreadingHTTPServer(('127.0.0.1',args.port),Preview).serve_forever()
+        else:
+            result=world.handle(args.path)
+            print(json.dumps({k:v for k,v in result.items() if k!='body_base64'}))
+            return 0 if result['status']<400 else 1
+    finally:world.close()
+
+
+if __name__=='__main__':raise SystemExit(main())

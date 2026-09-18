@@ -102,7 +102,7 @@ The viewer is bound to localhost. It serves reports only, without an API-key for
 
 ## Alternative: direct API experiment
 
-Set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in the invoking process environment through your usual secret manager or shell. Compose forwards that variable to the runner only. Do not paste a key into a prompt or report. No `.env` file is required or read by the Python application.
+Set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in the invoking process environment through your usual secret manager or shell. Compose forwards that variable to the runner only. Do not paste a key into a prompt or report. The direct API runner does not load `.env` files. The separate Sonnet rewriter can read an explicitly supplied key file as described in [ON_DEMAND.md](ON_DEMAND.md).
 
 Replace `YOUR_MODEL_ID` with the exact model you want to test. No model is silently selected.
 
@@ -171,7 +171,7 @@ Tests cover offline URL confinement, unknown URLs, pagination, integrity checks,
 
 Additional Claude Code tests cover the stdio MCP handshake and page responses, tool inventory restrictions, subscription-only environment handling, identity redaction in authentication metadata, and CLI result conversion. No automated test needs a live model or account credentials.
 
-Python 3.12+ can also run everything directly, without third-party dependencies:
+Python 3.12+ can also run the core text-tool commands directly, without third-party dependencies. The network and rewrite components have additional dependencies:
 
 ```powershell
 python -m truman test
@@ -182,6 +182,10 @@ python -m truman serve
 If Python on Windows cannot validate the public Wikipedia certificate but the system curl can, acquisition supports `python -m truman prepare --transport curl --output data/wiki-new`. TLS verification remains enabled. This alternative is only used for public corpus acquisition, not for passing API keys to subprocesses.
 
 ## References
+
+For configurable generator A (local Qwen) and generator B (Claude Sonnet rewriting captured originals), see [REWRITE.md](REWRITE.md). It includes commands, audit records, verification results and current fidelity limits.
+
+For persistent worlds that rewrite pages only when requested, see [ON_DEMAND.md](ON_DEMAND.md). It covers shared facts, immutable page caching, full audit records, growing exploration and sealed replay across agents.
 
 For the optional gateway that removes explicit proxy variables and private Wikipedia destination addresses, see [the transparent-network plan, implementation and verification](TRANSPARENT_NETWORK.md). It preserves the frozen article bodies and records final served HTTP responses.
 

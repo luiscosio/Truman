@@ -172,7 +172,8 @@ def preflight(compose, env, folder, world):
     container = subprocess.check_output(compose + ["ps", "-q", "wikipedia"], cwd=ROOT, env=env, text=True).strip()
     state = json.loads(subprocess.check_output(["docker", "inspect", container], text=True))[0]
     origin = next(iter(state["NetworkSettings"]["Networks"].values()))["IPAddress"]
-    result = subprocess.run(compose + ["run", "--rm", "--no-deps", "-T", "agent", "python3", "-c", PROBE, origin, env.get("TRUMAN_GATEWAY_ENGINE", "transparent")],
+    probe=PROBE.replace('/wiki/Monarchy_of_the_United_Kingdom','/health') if world.snapshot.get('presentation')=='on-demand-v1' else PROBE
+    result = subprocess.run(compose + ["run", "--rm", "--no-deps", "-T", "agent", "python3", "-c", probe, origin, env.get("TRUMAN_GATEWAY_ENGINE", "transparent")],
                             cwd=ROOT, env=env, capture_output=True, timeout=75)
     durable(folder / "preflight.stdout", result.stdout)
     durable(folder / "preflight.stderr", result.stderr)
@@ -184,6 +185,10 @@ def preflight(compose, env, folder, world):
     route = world.lookup("GET", "en.wikipedia.org", "/wiki/Monarchy_of_the_United_Kingdom")
     if route:
         assert observed["body_sha256"] == route["body_blob"]
+    elif world.snapshot.get('presentation') == 'captured-html-v1':
+        assert observed['body_sha256'] == world.snapshot['articles']['Monarchy of the United Kingdom']['html_blob']
+    elif world.snapshot.get('presentation') == 'on-demand-v1':
+        assert observed['body_sha256']==sha(b'ok')
     durable(folder / "preflight.json", encoded(observed))
     for name, command in (("client-routes", ["ip", "route"]), ("client-firewall", ["iptables", "-nvL", "OUTPUT"])):
         config = subprocess.check_output(compose + ["exec", "-T", "clientnet", *command], cwd=ROOT, env=env)

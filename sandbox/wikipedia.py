@@ -188,6 +188,21 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(409, "text/plain; charset=utf-8", b"Request absent from frozen recording")
                 return
         parts = urlsplit(self.path)
+        if isinstance(world, FrozenWorld) and world.snapshot.get("presentation") == "captured-html-v1" and self.path != "/health":
+            if self.headers.get("Host", "").split(":")[0].lower() not in ("en.wikipedia.org", "en.m.wikipedia.org", "wikipedia.org", "www.wikipedia.org"):
+                self.replay_kind = "outside_snapshot"
+                self.respond(404, "text/plain", b"Not found")
+                return
+            from sandbox.rewrite_http import response
+            status, content_type, body, page, extra, self.replay_kind = response(world, self.path)
+            if extra:
+                from email.utils import formatdate
+                headers = (f"HTTP/1.1 {status} Found\r\nContent-Type: {content_type}\r\nContent-Length: {len(body)}\r\nDate: {formatdate(usegmt=True)}\r\n" +
+                           ''.join(f"{k}: {v}\r\n" for k,v in extra.items()) + '\r\n').encode()
+            else:
+                headers = None
+            self.respond(status, content_type, body, page, recorded_headers=headers)
+            return
         query = parse_qs(parts.query, keep_blank_values=True)
         page, content_type, status = None, "text/html; charset=utf-8", 200
         if self.path == "/health":
@@ -270,7 +285,8 @@ def serve():
     if os.environ.get("WORLD_REPLAY_DIR"):
         world = FrozenWorld(os.environ["WORLD_REPLAY_DIR"], os.environ.get("WORLD_REPLAY_MODE", "world"))
     else:
-        world = (SyntheticWorld(Path("/data"), os.environ["WORLD_MODEL_URL"], os.environ["WORLD_AUDIT_DIR"])
+        world = (SyntheticWorld(Path("/data"), os.environ["WORLD_MODEL_URL"], os.environ["WORLD_AUDIT_DIR"],
+                                json.loads(os.environ["WORLD_SCENARIO_JSON"]) if os.environ.get("WORLD_SCENARIO_JSON") else None)
                  if condition == "synthetic" else World(Path("/data"), condition))
     capture = Store(os.environ["WORLD_CAPTURE_DIR"]) if os.environ.get("WORLD_CAPTURE_DIR") else None
     if capture:

@@ -12,6 +12,7 @@ import mwparserfromhell as mw
 
 from sandbox.model_setup import REPOSITORY, REVISION, SHA256
 from sandbox.archive import Store
+from sandbox.generators import generation_settings
 from truman.world import World, digest, wiki_url
 
 MODEL = "qwen-agentworld"
@@ -68,7 +69,7 @@ def validate_article(value, key):
 
 
 class SyntheticWorld(World):
-    def __init__(self, bundle, endpoint, audit_dir):
+    def __init__(self, bundle, endpoint, audit_dir, scenario=None):
         super().__init__(bundle, "historical")
         self.condition = "synthetic"
         self.endpoint = endpoint.rstrip("/")
@@ -76,10 +77,12 @@ class SyntheticWorld(World):
         self.audit_dir.mkdir(parents=True, exist_ok=True)
         self.original_pages = copy.deepcopy(self.pages)
         self.original_text = dict(self._text)
-        self.date = self.manifest["worlds"]["reference"]["cutoff"][:10]
-        self.spec = {**SPEC, "current_date": self.date}
-        self.identity = {"repository": REPOSITORY, "revision": REVISION, "sha256": SHA256,
-                         "settings": SETTINGS, "world_spec": self.spec,
+        self.date = scenario['as_of'] if scenario else self.manifest["worlds"]["reference"]["cutoff"][:10]
+        self.spec = {**SPEC, "current_date": self.date} if scenario is None else {
+            "name": scenario["id"], "facts": scenario["facts"], "question": scenario["question"], "current_date": scenario["as_of"]}
+        self.settings = {**SETTINGS, **generation_settings(scenario or {}, 'a')}
+        self.identity = {"id": "a", "repository": REPOSITORY, "revision": REVISION, "sha256": SHA256,
+                         "settings": self.settings, "world_spec": self.spec,
                          "world_spec_sha256": digest(json.dumps(self.spec, sort_keys=True)),
                          "schema_version": 1}
         self.ready = set()
@@ -106,7 +109,7 @@ class SyntheticWorld(World):
             user = json.dumps({"world": self.spec, "request": {"method": "GET", "path": request_path},
                                "article": key, "background_excerpt": source}, ensure_ascii=False)
             payload = {"model": MODEL, "messages": [{"role": "system", "content": system},
-                        {"role": "user", "content": user}], **SETTINGS,
+                        {"role": "user", "content": user}], **self.settings,
                        "response_format": {"type": "json_schema", "json_schema": {
                            "name": "article", "strict": True, "schema": SCHEMA}}}
             audit = {"timestamp": time.time(), "article": key, "request": request_path,

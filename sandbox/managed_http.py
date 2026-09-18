@@ -4,6 +4,7 @@ Archives are final application fields/bodies, not HTTP/2 compressed wire frames.
 The response hook is before sending: queued_for_delivery does not assert receipt.
 """
 import asyncio
+import base64
 import http.client as http_client
 import json
 import os
@@ -21,7 +22,7 @@ PRIVATE = {"authorization", "proxy-authorization", "cookie"}
 
 def normalized_headers(original, length):
     hop = HOP | {value.strip().lower() for key, value in original if key.lower() == "connection" for value in value.split(",")}
-    headers = [(k, v) for k, v in original if k.lower() not in hop | {"date", "content-length"}
+    headers = [(k, v) for k, v in original if k.lower() not in hop | {"date", "content-length", "x-world-coverage", "x-world-evidence"}
                and not (k.lower() == "server" and v.strip() == "MediaWiki")]
     headers += [("Date", formatdate(usegmt=True)), ("Content-Length", str(length))]
     return headers
@@ -41,7 +42,7 @@ class FrozenHTTP:
         self.writer = io.FlowWriter(self.stream)
 
     def origin(self, path, host):
-        upstream = http_client.HTTPConnection("wikipedia", 80, timeout=20)
+        upstream = http_client.HTTPConnection("wikipedia", 80, timeout=int(os.environ.get('WORLD_ORIGIN_TIMEOUT','20')))
         try:
             upstream.request("GET", path, headers={"Host": host, "Connection": "close"})
             response = upstream.getresponse()
@@ -89,7 +90,11 @@ class FrozenHTTP:
         route = self.world.lookup(request.method, host, request.path)
         proof = route.get("evidence") if route else self.world.evidence("https://" + host + request.path)
         replay = "exact" if route else ("outside_snapshot" if response.status_code == 404 and not proof else "derived")
-        if response.status_code >= 500:
+        if os.environ.get('WORLD_ON_DEMAND'):
+            internal={k.lower():v for k,v in flow.metadata.get('origin_headers',[])}
+            replay=internal.get('x-world-coverage','error')
+            if internal.get('x-world-evidence'):proof=json.loads(base64.b64decode(internal['x-world-evidence']))
+        if response.status_code >= 500 and replay != 'generation_failed':
             replay = "error"
         elif route and (sha(body) != route["representation_blob"] or response.status_code != route["status"]):
             raise ValueError("Frozen route returned different content")

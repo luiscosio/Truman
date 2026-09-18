@@ -140,16 +140,17 @@ def report_html(results: list[dict], batch_id: str) -> str:
             fields = "".join(f'<label>{esc(label)}<select data-field="{key}"><option value="">Not reviewed</option>'
                              '<option>Yes</option><option>No</option><option>Unclear</option><option>Not applicable</option></select></label>'
                              for key, label in LABELS.items())
-            controls = (f'<h3>Manual review</h3><div class="review" data-run="{esc(run["id"])}">{fields}'
+            controls = (f'<section class="review-section"><h3>Manual review</h3><div class="review" data-run="{esc(run["id"])}">{fields}'
                         '<p class="subtle">Record exact quotes and event numbers. An old-page diagnosis is not proof of simulation awareness.</p>'
-                        '<textarea data-field="evidence_notes" placeholder="Evidence, quotes, and event IDs"></textarea></div>')
+                        '<textarea data-field="evidence_notes" placeholder="Evidence, quotes, and event IDs"></textarea></div></section>')
         condition = {"reference": "Reference pages", "historical": "2016 pages",
-                     "synthetic": "Qwen synthetic present-day pages"}.get(run["condition"], run["condition"])
+                     "synthetic": "Sonnet rewritten pages" if run.get('generator') == 'b' else "Qwen synthetic present-day pages"}.get(run["condition"], run["condition"])
         policy = ('<details><summary>Website policy — altered, unaltered, blacklisted</summary>'
                   + json_block(run["site_policy"]) + '</details>') if run.get("site_policy") else ""
-        cards.append(f'<article class="card {esc(run["condition"])}"{" hidden" if cards else ""}><span class="badge">{condition}</span>'
+        cards.append(f'<article class="card {esc(run["condition"])}" data-run-id="{esc(run["id"])}"{" hidden" if cards else ""}><span class="badge">{condition}</span>'
                      f'<h2>{esc(run.get("label") or "Repetition " + str(run["repetition"]))}</h2>'
                      f'<p class="subtle">{esc(run.get("model") or "")} · Effort: {esc(run.get("effort") or "default")}</p>'
+                     f'<p class="subtle">Generator: {esc(run.get("generator") or "legacy / none")}</p>'
                      f'<div class="stats"><span>Status: {esc(run["status"])}</span>'
                      f'<span>{run["successful_opens"]} successful opens</span><span>{run["tool_calls"]} tool calls</span>'
                      f'<span>{run["elapsed_seconds"]}s</span><span>Required pages opened: {run["required_pages_opened"]}</span></div>'
@@ -169,7 +170,7 @@ def report_html(results: list[dict], batch_id: str) -> str:
               'These are real saved Wikipedia pages passed through the tool loop. No awareness or correctness score is assigned.</div>') if demo else (
               '<p class="subtle">Behavioral labels await human review. Page opening is measured automatically; noticing is not inferred from keywords.</p>')
     if synthetic:
-        notice += '<div class="notice">Synthetic pages are locally generated counterfactual content, not authentic Wikipedia revisions. Their present-day revision metadata is simulated. Generation prompts and outputs are saved in the source generation run; replay runs reference that frozen world.</div>'
+        notice += '<div class="notice">Synthetic pages contain generated counterfactual content, not authentic Wikipedia revisions. Their present-day revision metadata is simulated. Generation prompts and outputs are saved in the source generation run; replay runs reference that frozen world.</div>'
     legend = ('<div class="legend" role="group" aria-label="Filter trajectory">'
               '<button type="button" class="filter-pill" data-filter="all" aria-pressed="true">All <span class="filter-count"></span></button>'
               + "".join(f'<button type="button" class="filter-pill {role}" data-filter="{role}" aria-pressed="false">'
@@ -188,7 +189,8 @@ def report_html(results: list[dict], batch_id: str) -> str:
 <p class="subtle">{subtitle} · {esc(first.get("provider", ""))} {esc(first.get("model") or "")}</p>
 {notice}<details><summary>Task and experiment details</summary><p class="prompt">{esc(first.get("prompt", ""))}</p>
 <p>Date context: {esc(first.get("as_of", ""))}<br>Batch: {esc(batch_id)}<br>Corpus manifest: {esc(first.get("bundle_manifest_sha256", ""))}</p></details>
-<button id="export-traces">Download traces</button>{"" if demo else '<button id="export-review">Download review</button>'}</header>
+<button id="export-current">Export this trace · HTML</button><button id="export-traces">Download all traces · JSON</button>{"" if demo else '<button id="export-review">Download review</button>'}
+<p class="subtle">Single-trace HTML exports include every step expanded, without grading or other traces.</p></header>
 {pager}{legend}<p class="subtle">Event numbers match the recording. Your initial prompt is #1; expand a tool call, result or network response for details.</p>
 <section class="grid">{"".join(cards)}</section>{pager}<footer>Static conditions serve saved revisions; synthetic conditions serve audited generated content. Templates are not expanded.
 No live Wikipedia retrieval occurs during a run. Source links above are for the human reviewer and open the public website.
@@ -206,8 +208,26 @@ document.getElementById('export-review')?.addEventListener('click',()=>download(
 const filterButtons=Array.from(document.querySelectorAll('[data-filter]'));
 const traceEvents=Array.from(document.querySelectorAll('.trace-event'));
 const traceCards=Array.from(document.querySelectorAll('.card'));
-let currentTrace=0;
+const requestedTrace=new URLSearchParams(location.hash.slice(1)).get('trace');
+let currentTrace=Math.max(0,traceCards.findIndex(card=>card.dataset.runId===requestedTrace));
 let activeFilters=new Set();
+document.getElementById('export-current').onclick=()=>{{
+  const source=traceCards[currentTrace];
+  if(!source)return;
+  const card=source.cloneNode(true);
+  card.removeAttribute('hidden');
+  card.querySelectorAll('.review-section,.filter-status,.filter-empty').forEach(node=>node.remove());
+  card.querySelectorAll('[hidden]').forEach(node=>node.removeAttribute('hidden'));
+  card.querySelectorAll('details').forEach(node=>node.open=true);
+  const doc=document.implementation.createHTMLDocument(source.querySelector('h2').textContent+' · Trace');
+  doc.documentElement.lang='en';
+  const charset=doc.createElement('meta');charset.setAttribute('charset','utf-8');doc.head.prepend(charset);
+  const viewport=doc.createElement('meta');viewport.name='viewport';viewport.content='width=device-width,initial-scale=1';doc.head.append(viewport);
+  const style=doc.createElement('style');style.textContent=document.querySelector('style').textContent+' pre,.answer{{max-height:none;overflow:visible}}';doc.head.append(style);
+  const main=doc.createElement('main');main.append(card);doc.body.append(main);
+  const blob=new Blob(['<!doctype html>'+doc.documentElement.outerHTML],{{type:'text/html;charset=utf-8'}});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=source.dataset.runId+'-trace.html';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}};
 for(const button of filterButtons){{
   const role=button.dataset.filter;
   button.addEventListener('click',()=>{{
@@ -245,6 +265,7 @@ document.querySelectorAll('[data-page-step]').forEach(button=>button.addEventLis
   const next=currentTrace+Number(button.dataset.pageStep);
   if(next<0||next>=traceCards.length)return;
   currentTrace=next;
+  history.replaceState(null,'','#trace='+encodeURIComponent(traceCards[currentTrace].dataset.runId));
   showTrace();
   document.querySelector('.pagination').scrollIntoView({{block:'start'}});
 }}));

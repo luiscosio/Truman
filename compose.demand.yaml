@@ -1,0 +1,12 @@
+services:
+  wikipedia:
+    command: [python, -m, sandbox.demand_bridge]
+    environment:
+      WORLD_QUEUE: /world-queue
+    volumes:
+      - ${TRUMAN_WORLD_QUEUE:?On-demand queue required}:/world-queue
+      - ${TRUMAN_WORLD_BRIDGE:-./sandbox/demand_bridge.py}:/app/sandbox/demand_bridge.py:ro
+  gateway:
+    environment:
+      WORLD_ON_DEMAND: "1"
+      WORLD_ORIGIN_TIMEOUT: "600"

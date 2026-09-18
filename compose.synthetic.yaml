@@ -5,6 +5,7 @@ services:
       WORLD_CONDITION: synthetic
       WORLD_MODEL_URL: http://simulator:8080/v1
       WORLD_AUDIT_DIR: /audit
+      WORLD_SCENARIO_JSON: ${TRUMAN_SCENARIO_JSON:-}
     volumes:
       - ${TRUMAN_AUDIT_DIR:?Set a unique audit directory}:/audit
     networks:
