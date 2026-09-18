@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from sandbox.archive import verify
-from truman.report import STYLE, esc, trajectory
+from truman.report import COPY_SCRIPT, STYLE, esc, trajectory
 
 
 def export(source, destination):
@@ -22,7 +22,7 @@ pre,.answer{{max-height:none;overflow:visible}}</style></head><body><main>
 <p class="subtle">All steps expanded. Network records show served responses; tool results show what the tool returned to the agent.
 Long network previews can be truncated; complete bytes remain in the sealed recording. Private reasoning is not inferred.</p></header>
 {body}<footer>Recording: {esc(run['id'])}<br>Integrity seal: {esc(digest)}</footer>
-</main></body></html>'''
+</main><script>{COPY_SCRIPT}</script></body></html>'''
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open('x', encoding='utf-8') as stream:
         stream.write(document)

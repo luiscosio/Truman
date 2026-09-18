@@ -24,7 +24,65 @@ textarea{width:100%;min-height:90px;resize:vertical}button{cursor:pointer;backgr
 .filter-pill{display:inline-flex;align-items:center;gap:7px;border-radius:999px;margin:0;padding:8px 13px;background:white;color:var(--role,var(--ink));border:1px solid var(--line);font-size:13px}.filter-pill[aria-pressed="true"]{background:var(--tint,#e6eee8);border-color:var(--role,var(--green));box-shadow:inset 0 0 0 1px var(--role,var(--green))}.filter-pill:focus-visible{outline:3px solid #2563eb;outline-offset:3px}.filter-pill:disabled{opacity:.45;cursor:default}.filter-count{font:11px ui-monospace,monospace;opacity:.8}.trace-event[hidden],.filter-empty[hidden]{display:none!important}.filter-status{font-size:12px;color:var(--muted);margin:8px 0}
 .user{--role:#225baf;--tint:#edf4ff}.assistant{--role:#216653;--tint:#edf7f1}.tool-call{--role:#6943a5;--tint:#f3edfc}.tool-result{--role:#75509e;--tint:#f7f1fb}.network{--role:#985411;--tint:#fff4e6}.system{--role:#58616d;--tint:#f0f2f5}.error{--role:#ad3039;--tint:#fff0f0}
 .trace-event{border:1px solid var(--line);border-left:4px solid var(--role);border-radius:8px;margin:12px 0;padding:14px;background:white}.trace-event summary{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.trace-event summary::before{content:'▸';color:var(--role)}.trace-event[open]>summary::before{content:'▾'}.trace-event summary::-webkit-details-marker{display:none}.event-number{color:var(--muted);font:12px ui-monospace,monospace}.event-title{font-size:13px;overflow-wrap:anywhere}.message{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0 0}.trace-event.user{background:var(--tint)}.trace-event pre{margin-bottom:0}.trace-event details{margin-top:12px;padding-bottom:0}.call-id{font:11px ui-monospace,monospace;color:var(--muted);overflow-wrap:anywhere}
+.copy-tools{display:flex;align-items:center;gap:10px;margin-top:12px;user-select:none}.copy-text{margin:0;padding:4px 10px;font-size:12px;background:white;color:var(--green)}.copy-status{font-size:12px;color:var(--muted)}.copy-text:focus-visible{outline:3px solid #2563eb;outline-offset:3px}
 @media(max-width:850px){.grid{grid-template-columns:1fr}main{padding:24px 16px}h1{font-size:32px}}
+"""
+
+
+COPY_SCRIPT = r"""
+async function copyPlainText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch (_) {}
+  const active = document.activeElement;
+  const selection = window.getSelection();
+  const ranges = Array.from({length: selection.rangeCount}, (_, i) => selection.getRangeAt(i).cloneRange());
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.readOnly = true;
+  field.style.cssText = 'position:fixed;left:-10000px;top:0';
+  document.body.append(field);
+  try {
+    field.select();
+    if (!document.execCommand('copy')) throw new Error('Copy unavailable');
+  } finally {
+    field.remove();
+    active?.focus({preventScroll:true});
+    selection.removeAllRanges();
+    for (const range of ranges) selection.addRange(range);
+  }
+}
+for (const content of document.querySelectorAll('.message,.answer,pre')) {
+  const tools = document.createElement('div');
+  tools.className = 'copy-tools';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'copy-text';
+  button.textContent = 'Copy text';
+  const event = content.closest('.trace-event');
+  const raw = content.closest('details')?.querySelector(':scope > summary')?.textContent === 'Recorded event JSON';
+  button.setAttribute('aria-label', raw ? 'Copy recorded event JSON' :
+    event ? `Copy text from event #${event.dataset.eventId}` : 'Copy text');
+  const status = document.createElement('span');
+  status.className = 'copy-status';
+  status.setAttribute('role','status');
+  let reset;
+  button.addEventListener('click', async () => {
+    clearTimeout(reset);
+    try {
+      await copyPlainText(content.textContent);
+      status.textContent = 'Copied';
+    } catch (_) {
+      status.textContent = 'Could not copy. Select the text and use your keyboard to copy.';
+    }
+    reset = setTimeout(() => { status.textContent = ''; }, 4000);
+  });
+  tools.append(button,status);
+  content.before(tools);
+}
 """
 
 
@@ -196,6 +254,7 @@ def report_html(results: list[dict], batch_id: str) -> str:
 No live Wikipedia retrieval occurs during a run. Source links above are for the human reviewer and open the public website.
 The target sees neither condition labels nor provenance manifests. Remote model inference requires provider access.</footer>
 </main><script id="trace-data" type="application/json">{embedded}</script><script>
+{COPY_SCRIPT}
 const traces=JSON.parse(document.getElementById('trace-data').textContent);
 const batch=traces[0]?.batch_id||'report';
 const storageKey='truman-review-'+batch;
@@ -216,7 +275,7 @@ document.getElementById('export-current').onclick=()=>{{
   if(!source)return;
   const card=source.cloneNode(true);
   card.removeAttribute('hidden');
-  card.querySelectorAll('.review-section,.filter-status,.filter-empty').forEach(node=>node.remove());
+  card.querySelectorAll('.review-section,.filter-status,.filter-empty,.copy-tools').forEach(node=>node.remove());
   card.querySelectorAll('[hidden]').forEach(node=>node.removeAttribute('hidden'));
   card.querySelectorAll('details').forEach(node=>node.open=true);
   const doc=document.implementation.createHTMLDocument(source.querySelector('h2').textContent+' · Trace');
@@ -225,6 +284,7 @@ document.getElementById('export-current').onclick=()=>{{
   const viewport=doc.createElement('meta');viewport.name='viewport';viewport.content='width=device-width,initial-scale=1';doc.head.append(viewport);
   const style=doc.createElement('style');style.textContent=document.querySelector('style').textContent+' pre,.answer{{max-height:none;overflow:visible}}';doc.head.append(style);
   const main=doc.createElement('main');main.append(card);doc.body.append(main);
+  const script=doc.createElement('script');script.textContent={json.dumps(COPY_SCRIPT)};doc.body.append(script);
   const blob=new Blob(['<!doctype html>'+doc.documentElement.outerHTML],{{type:'text/html;charset=utf-8'}});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=source.dataset.runId+'-trace.html';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }};
