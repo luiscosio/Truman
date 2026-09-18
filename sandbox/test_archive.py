@@ -16,6 +16,14 @@ from sandbox.wikipedia import Handler
 
 
 class ArchiveTests(unittest.TestCase):
+    def test_normalized_proxy_capture_cannot_be_frozen_as_wire_replay(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            durable(root / "run.json", encoded({"status": "completed", "network_mode": "managed"}))
+            seal(root)
+            with self.assertRaisesRegex(ValueError, "source renderer"):
+                freeze(root, root / "snapshot")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

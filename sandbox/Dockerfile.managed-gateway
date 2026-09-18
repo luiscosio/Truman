@@ -1,0 +1,9 @@
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends iproute2 iptables openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir dnslib==0.9.26 mitmproxy==12.2.1
+WORKDIR /app
+COPY sandbox /app/sandbox
+COPY truman /app/truman
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app
+CMD ["sh", "/app/sandbox/transparent-router.sh"]

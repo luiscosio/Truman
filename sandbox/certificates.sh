@@ -10,7 +10,7 @@ if [ -e /tls/ca.key ] || [ -e /tls/server.crt ] || [ -e /trust/ca.crt ]; then
     exit 1
 fi
 openssl req -x509 -newkey rsa:2048 -nodes -days 365 -sha256 \
-    -subj '/CN=Sandbox Local CA' -keyout /tls/ca.key -out /trust/ca.crt \
+    -subj "/CN=${TRUMAN_CA_NAME:-Sandbox Local CA}" -keyout /tls/ca.key -out /trust/ca.crt \
     -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign'
 openssl req -newkey rsa:2048 -nodes -sha256 -subj '/CN=en.wikipedia.org' \
     -keyout /tls/server.key -out /tls/server.csr
@@ -22,4 +22,5 @@ openssl x509 -req -in /tls/server.csr -CA /trust/ca.crt -CAkey /tls/ca.key \
     -extfile /tls/extensions.cnf -out /tls/server.crt
 chmod 644 /trust/ca.crt /tls/server.crt
 chown 10001:10001 /tls/server.key
+cat /tls/server.crt /tls/server.key /trust/ca.crt > /tls/server.pem
 echo 'Sandbox-only CA and Wikipedia certificate created.'

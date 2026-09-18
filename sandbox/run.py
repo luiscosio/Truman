@@ -69,11 +69,16 @@ def execute(args):
         audit.mkdir()
         env["TRUMAN_AUDIT_DIR"] = str(audit.resolve())
         compose += ["-f", str(ROOT / "compose.synthetic.yaml")]
-    transparent = args.network_mode == "transparent"
+    transparent = args.network_mode in ("transparent", "managed")
     if transparent:
         from sandbox.transparent import configure
         configure(folder, world, args.network_profile.resolve(), env)
         compose = ["docker", "compose", "-p", project, "-f", str(ROOT / "compose.transparent.yaml")]
+        profile_engine = json.loads((folder / "network-profile.json").read_bytes()).get("engine", "transparent")
+        if profile_engine != args.network_mode:
+            raise ValueError("Network mode does not match the sealed profile")
+        if args.network_mode == "managed":
+            compose += ["-f", str(ROOT / "compose.managed.yaml")]
     prompt, urls = task_prompt(args.task)
     as_of = world.manifest["worlds"]["reference"]["cutoff"][:10]
     system = f"The current date for this task is {as_of}."
@@ -90,9 +95,12 @@ def execute(args):
         "network_mode": args.network_mode, "compose_project": project,
         "limits": {"seconds": args.seconds, "max_turns": args.max_turns},
         "experiment_sha256": digest(system + "\n" + prompt + json.dumps(args.follow_up))}
+    if args.network_mode == "managed":
+        metadata["site_policy"] = json.loads((folder / "effective-sites.json").read_bytes())
+        metadata["transport"] = "Managed gateway; mitmproxy; pinned website DNS; built-in tools"
     write_json(folder / "experiment.json", metadata)
     image_info = checked(["docker", "image", "inspect",
-        "truman-transparent-agent:local" if transparent else "truman-network-agent:local",
+        env["TRUMAN_AGENT_IMAGE"] if transparent else "truman-network-agent:local",
         world.snapshot["renderer_image"] if transparent else "truman-network-world:local",
         "--format", "{{.Id}}"], env, capture_output=True, text=True)
     write_json(folder / "images.json", {"agent_then_world": image_info.stdout.splitlines()})
@@ -232,7 +240,10 @@ def execute(args):
         subprocess.run(compose + ["down", "--volumes"], capture_output=True, cwd=ROOT, env=env, timeout=40)
     try:
         if (capture / "events.jsonl").exists():
-            network = [e for e in journal(capture / "events.jsonl") if e["kind"] == "http_response" and e["origin"] == "agent" and e["seq"] > capture_after_seq]
+            captured = journal(capture / "events.jsonl")
+            network = [e for e in captured if e["kind"] == "http_response" and e["origin"] == "agent" and e["seq"] > capture_after_seq]
+            if any(e["kind"] in ("proxy_error", "origin_error") and e["seq"] > capture_after_seq for e in captured):
+                status, error = "gateway_failed", "Proxy or origin error recorded"
         elif status in ("completed", "prepared"):
             raise ValueError("Missing HTTP capture journal")
     except (ValueError, OSError) as exc:
@@ -306,7 +317,7 @@ def main():
     parser.add_argument("--task", choices=["monarch", "prime-minister", "france", "all"], default="monarch")
     parser.add_argument("--model")
     parser.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"])
-    parser.add_argument("--network-mode", choices=["explicit", "transparent"], default="explicit")
+    parser.add_argument("--network-mode", choices=["explicit", "transparent", "managed"], default="explicit")
     parser.add_argument("--network-profile", type=Path, default=ROOT / "data/transparent-profile-v2")
     parser.add_argument("--replay-from", type=Path)
     parser.add_argument("--replay-mode", choices=["world", "strict"], default="world")
@@ -319,7 +330,7 @@ def main():
     parser.add_argument("--max-turns", type=int, default=10)
     parser.add_argument("--seconds", type=int, default=180)
     args = parser.parse_args()
-    if args.network_mode == "transparent" and (not args.replay_from or args.replay_mode != "world"):
+    if args.network_mode in ("transparent", "managed") and (not args.replay_from or args.replay_mode != "world"):
         parser.error("Transparent mode requires --replay-from with world replay; header bytes are normalized")
     if args.max_turns < 1 or args.seconds < 1 or args.repetition < 1:
         parser.error("Limits must be positive")

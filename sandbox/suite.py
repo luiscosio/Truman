@@ -24,7 +24,7 @@ def compare_runs(paths):
             raise ValueError("A case failed or did not retrieve the required article")
         results.append(result)
         images.append(json.loads((path / "images.json").read_bytes()))
-        if result.get("network_mode") == "transparent":
+        if result.get("network_mode") in ("transparent", "managed"):
             profile = json.loads((path / "network-profile.json").read_bytes())
             network_profiles.append({key: profile[key] for key in ("profile_seal", "gateway_image")})
     for key in ("snapshot_sha256", "replay_mode", "experiment_sha256", "observed_tools", "limits", "agent_adapter", "network_mode"):
@@ -42,7 +42,7 @@ def main():
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--repetitions", type=int, default=1)
-    parser.add_argument("--network-mode", choices=["explicit", "transparent"], default="explicit")
+    parser.add_argument("--network-mode", choices=["explicit", "transparent", "managed"], default="explicit")
     parser.add_argument("--network-profile", type=Path, default=ROOT / "data/transparent-profile-v2")
     args = parser.parse_args()
     if not 1 <= args.repetitions <= 50:

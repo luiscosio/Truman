@@ -185,6 +185,8 @@ If Python on Windows cannot validate the public Wikipedia certificate but the sy
 
 For the optional gateway that removes explicit proxy variables and private Wikipedia destination addresses, see [the transparent-network plan, implementation and verification](TRANSPARENT_NETWORK.md). It preserves the frozen article bodies and records final served HTTP responses.
 
+The newer [managed-network setup](MANAGED_NETWORK.md) adds a neutral reusable CA, HTTP/2 and connection reuse, a [website policy with altered/unaltered/blacklisted lists](network/README.md), and matched authentic/altered content runs. Its recordings distinguish application HTTP fields from wire framing and confirmed receipt.
+
 The implementation follows [MediaWiki's revision API](https://www.mediawiki.org/wiki/API:Revisions), [OpenAI custom function calling](https://developers.openai.com/api/docs/guides/function-calling), [Anthropic client tool execution](https://platform.claude.com/docs/en/agents-and-tools/tool-use/how-tool-use-works), and the [Claude Code CLI reference](https://code.claude.com/docs/en/cli-reference). Subscription login follows [Claude Code authentication](https://code.claude.com/docs/en/authentication). Wikipedia text remains subject to its applicable licenses; each page's precise revision link is retained for attribution and source inspection.
 
 See [WIKIPEDIA-MVP.md](WIKIPEDIA-MVP.md) for the experiment rationale and [PLAN.md](PLAN.md) for deferred expansion ideas.

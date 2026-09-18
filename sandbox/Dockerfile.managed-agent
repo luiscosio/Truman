@@ -1,0 +1,8 @@
+ARG BASE_AGENT
+FROM ${BASE_AGENT}
+USER root
+COPY --from=trust ca.crt /usr/local/share/ca-certificates/network-root.crt
+RUN update-ca-certificates
+COPY sandbox/transparent-agent.sh /usr/local/bin/agent-entrypoint
+RUN chmod 755 /usr/local/bin/agent-entrypoint
+USER agent

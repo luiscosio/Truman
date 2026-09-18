@@ -132,6 +132,8 @@ def freeze(run, destination):
     result = json.loads((run / "run.json").read_bytes())
     if result["status"] not in ("completed", "prepared"):
         raise ValueError("Only successful or prepared runs can be frozen")
+    if result.get("network_mode") == "managed":
+        raise ValueError("Freeze the source renderer recording, not normalized managed-proxy HTTP fields")
     capture = run / "capture"
     context = json.loads((capture / "context.json").read_bytes())
     articles = {a["key"]: a for p in (capture / "articles").glob("*.json") for a in [json.loads(p.read_bytes())]}

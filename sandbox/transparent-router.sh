@@ -23,4 +23,7 @@ test -n "$edge"
 iptables -P FORWARD DROP
 iptables -t nat -A PREROUTING -i "$edge" -p tcp --dport 443 -j REDIRECT --to-ports 8443
 iptables -t nat -A PREROUTING -i "$edge" -p tcp --dport 80 -j REDIRECT --to-ports 8080
+if [ "${TRUMAN_GATEWAY_ENGINE:-transparent}" = managed ]; then
+    exec python -m sandbox.managed_gateway
+fi
 exec python -m sandbox.transparent_gateway

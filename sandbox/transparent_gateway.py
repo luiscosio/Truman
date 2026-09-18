@@ -200,10 +200,25 @@ class Edge(socketserver.ThreadingTCPServer):
 
 
 class Connection(socketserver.BaseRequestHandler):
+    def relay(self, address):
+        with socket.create_connection(address, 20) as upstream:
+            self.request.settimeout(30)
+            upstream.settimeout(30)
+            while True:
+                ready, _, _ = select.select([self.request, upstream], [], [], 120)
+                if not ready:
+                    return
+                for source in ready:
+                    data = source.recv(65536)
+                    if not data:
+                        return
+                    (upstream if source is self.request else self.request).sendall(data)
+
     def handle(self):
         client, edge = self.request, self.server
         client.settimeout(10)
         identifier = uuid.uuid4().hex
+        name, destination = None, None
         try:
             original = client.getsockopt(socket.SOL_IP, 80, 16)  # Linux SO_ORIGINAL_DST
             port = int.from_bytes(original[2:4], "big")
@@ -214,16 +229,22 @@ class Connection(socketserver.BaseRequestHandler):
                 if destination not in edge.wiki_ips:
                     raise ValueError("HTTP destination not allowed")
                 edge.audit.event("connection", connection_id=identifier, destination=destination, port=port, decision="wikipedia")
-                HTTP(client, self.client_address, edge)
+                if getattr(edge, "managed", False):
+                    self.relay(("127.0.0.1", 9000))
+                else:
+                    HTTP(client, self.client_address, edge)
                 return
             name = peek_sni(client)
-            if name in WIKI:
+            if name in getattr(edge, "wiki_names", WIKI):
                 if destination not in edge.wiki_ips:
                     raise ValueError("Wikipedia destination differs from pinned DNS")
                 edge.audit.event("connection", connection_id=identifier, destination=destination, port=port, sni=name, decision="wikipedia")
-                with edge.tls.wrap_socket(client, server_side=True) as secured:
-                    HTTP(secured, self.client_address, edge)
-            elif name in PROVIDERS:
+                if getattr(edge, "managed", False):
+                    self.relay(("127.0.0.1", 9000))
+                else:
+                    with edge.tls.wrap_socket(client, server_side=True) as secured:
+                        HTTP(secured, self.client_address, edge)
+            elif name in getattr(edge, "providers", PROVIDERS):
                 addresses = public_addresses(name)
                 # Connect only to a fresh, validated address for the allowed SNI.
                 with socket.create_connection((addresses[0], 443), 20) as upstream:
@@ -245,7 +266,7 @@ class Connection(socketserver.BaseRequestHandler):
             else:
                 raise ValueError("TLS hostname not allowed")
         except Exception as exc:
-            edge.audit.event("connection_error", connection_id=identifier, error=str(exc))
+            edge.audit.event("connection_error", connection_id=identifier, sni=name, destination=destination, error=str(exc))
         finally:
             edge.audit.event("connection_closed", connection_id=identifier)
 

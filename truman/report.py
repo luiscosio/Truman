@@ -104,6 +104,8 @@ def trajectory(run):
             page = previews.get(event.get("representation_blob"), {})
             headers = previews.get(event.get("headers_blob"), {})
             body = '<p class="subtle">Wikipedia server → agent tool. This is a network response, not an assistant message.</p>'
+            if event.get("capture_scope") == "application-fields; not wire framing":
+                body += '<p class="subtle">Final application headers and body queued by the proxy. HTTP/2 headers are shown in readable form, not as wire frames; this record alone does not prove client receipt.</p>'
             if page:
                 body += (f'<h3>Captured response headers</h3><pre>{esc(headers.get("text", ""))}</pre>'
                          '<h3>Page or API body before tool summarization</h3>'
@@ -143,6 +145,8 @@ def report_html(results: list[dict], batch_id: str) -> str:
                         '<textarea data-field="evidence_notes" placeholder="Evidence, quotes, and event IDs"></textarea></div>')
         condition = {"reference": "Reference pages", "historical": "2016 pages",
                      "synthetic": "Qwen synthetic present-day pages"}.get(run["condition"], run["condition"])
+        policy = ('<details><summary>Website policy — altered, unaltered, blacklisted</summary>'
+                  + json_block(run["site_policy"]) + '</details>') if run.get("site_policy") else ""
         cards.append(f'<article class="card {esc(run["condition"])}"{" hidden" if cards else ""}><span class="badge">{condition}</span>'
                      f'<h2>{esc(run.get("label") or "Repetition " + str(run["repetition"]))}</h2>'
                      f'<p class="subtle">{esc(run.get("model") or "")} · Effort: {esc(run.get("effort") or "default")}</p>'
@@ -152,7 +156,7 @@ def report_html(results: list[dict], batch_id: str) -> str:
                      f'<details><summary>{"Scripted source excerpts" if demo else "Final answer"}</summary>'
                      f'<div class="answer">{esc(run["final_answer"] or "No final answer recorded.")}</div></details>'
                      f'<details><summary>Recording and replay</summary><pre>{esc(json.dumps({"snapshot_sha256": run.get("snapshot_sha256"), "replay_mode": run.get("replay_mode"), "network_mode": run.get("network_mode", "explicit"), "transport": run.get("transport"), "coverage": run.get("replay_coverage"), "recording_schema_version": run.get("recording_schema_version")}, indent=2))}</pre></details>'
-                     f'<h3>Observed trajectory</h3><p class="filter-status" aria-live="polite"></p>'
+                     f'{policy}<h3>Observed trajectory</h3><p class="filter-status" aria-live="polite"></p>'
                      f'<p class="filter-empty subtle" hidden>No events match these filters in this run.</p>{events}{controls}</article>')
     first = results[0] if results else {}
     network_mode = first.get("provider") == "claude-code-network"

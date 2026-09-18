@@ -19,12 +19,18 @@ def image_id(name):
     return subprocess.check_output(["docker", "image", "inspect", name, "--format", "{{.Id}}"], text=True).strip()
 
 
-def prepare(path):
+def prepare(path, managed=False, policy_path=None):
     path = path.resolve()
     path.mkdir(parents=True, exist_ok=False)
     for name in ("tls", "trust"):
         (path / name).mkdir()
-    answers = {name: sorted({v[4][0] for v in socket.getaddrinfo(name, 443, socket.AF_INET, socket.SOCK_STREAM)}) for name in WIKI}
+    names = WIKI
+    if managed:
+        from sandbox.site_policy import validate
+        policy = json.loads(policy_path.read_bytes())
+        names = validate(policy)
+        durable(path / "sites.json", encoded(policy))
+    answers = {name: sorted({v[4][0] for v in socket.getaddrinfo(name, 443, socket.AF_INET, socket.SOCK_STREAM)}) for name in names}
     if any(not ipaddress.ip_address(ip).is_global for ips in answers.values() for ip in ips):
         raise ValueError("Expected public Wikipedia IPv4 answers")
     durable(path / "dns.json", encoded({"captured_at": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -34,13 +40,16 @@ def prepare(path):
     subprocess.run(["docker", "tag", base_agent, base_tag], check=True)
     with (path / "certificate-setup.log").open("xb") as log:
         subprocess.run(["docker", "run", "--rm", "--network", "none", "-v", str(path / "tls") + ":/tls",
-            "-v", str(path / "trust") + ":/trust", renderer, "sh", "-c",
-            "sh /app/sandbox/certificates.sh && chmod 644 /tls/server.key"], check=True, stdout=log, stderr=subprocess.STDOUT, timeout=60)
+            "-v", str(path / "trust") + ":/trust",
+            "-v", str(ROOT / "sandbox/certificates.sh") + ":/certificate-setup.sh:ro",
+            "-e", "TRUMAN_CA_NAME=" + ("Managed Network Root CA" if managed else "Sandbox Local CA"), renderer, "sh", "-c",
+            "sh /certificate-setup.sh && chmod 644 /tls/server.key"], check=True, stdout=log, stderr=subprocess.STDOUT, timeout=60)
+    tag = "truman-managed-agent:local" if managed else "truman-transparent-agent:local"
     with (path / "agent-build.log").open("xb") as log:
-        subprocess.run(["docker", "build", "-f", "sandbox/Dockerfile.transparent-agent",
+        subprocess.run(["docker", "build", "-f", "sandbox/Dockerfile.managed-agent" if managed else "sandbox/Dockerfile.transparent-agent",
             "--build-arg", "BASE_AGENT=" + base_tag, "--build-context", "trust=" + str(path / "trust"),
-            "-t", "truman-transparent-agent:local", "."], cwd=ROOT, check=True, stdout=log, stderr=subprocess.STDOUT, timeout=300)
-    durable(path / "profile.json", encoded({"agent_image": image_id("truman-transparent-agent:local"),
+            "-t", tag, "."], cwd=ROOT, check=True, stdout=log, stderr=subprocess.STDOUT, timeout=300)
+    durable(path / "profile.json", encoded({"agent_image": image_id(tag), "engine": "managed" if managed else "transparent",
         "base_agent_image": base_agent, "ca_sha256": sha((path / "trust/ca.crt").read_bytes()),
         "dns_sha256": sha((path / "dns.json").read_bytes())}))
     print("Profile seal: " + seal(path), flush=True)
@@ -49,8 +58,15 @@ def prepare(path):
 def configure(folder, world, profile, env):
     verify(profile)
     profile_data = json.loads((profile / "profile.json").read_bytes())
-    if image_id("truman-transparent-agent:local") != profile_data["agent_image"]:
-        raise ValueError("Agent image differs from the prepared trust profile")
+    image_id(profile_data["agent_image"])
+    managed = profile_data.get("engine") == "managed"
+    gateway = image_id("truman-managed-gateway:local" if managed else "truman-transparent-gateway:local")
+    env.update(TRUMAN_AGENT_IMAGE=profile_data["agent_image"], TRUMAN_GATEWAY_IMAGE=gateway,
+               TRUMAN_GATEWAY_ENGINE="managed" if managed else "transparent")
+    if managed:
+        from sandbox.site_policy import effective
+        durable(folder / "effective-sites.json", encoded(effective(json.loads((profile / "sites.json").read_bytes()), world.condition)))
+        env["TRUMAN_SITES_FILE"] = str((folder / "effective-sites.json").resolve())
     occupied = []
     ids = subprocess.check_output(["docker", "network", "ls", "-q"], text=True).split()
     for network in json.loads(subprocess.check_output(["docker", "network", "inspect", *ids], text=True)) if ids else []:
@@ -72,7 +88,7 @@ def configure(folder, world, profile, env):
         TRUMAN_RESOLV_CONF=str((folder / "resolv.conf").resolve()))
     durable(folder / "network-profile.json", encoded({**profile_data, "profile_seal": verify(profile),
         "dns": json.loads((profile / "dns.json").read_bytes()), "edge_subnet": str(subnet),
-        "gateway_image": image_id("truman-transparent-gateway:local")}))
+        "gateway_image": gateway}))
 
 
 PROBE = r'''
@@ -89,6 +105,24 @@ conn.request('GET','/wiki/Monarchy_of_the_United_Kingdom')
 response=conn.getresponse()
 body=response.read()
 assert response.status==200 and response.version==11
+managed=len(sys.argv)>2 and sys.argv[2]=='managed'
+extras={}
+if managed:
+ assert cert['issuer']==((('commonName','Managed Network Root CA'),),)
+ same=conn.sock
+ conn.request('GET','/wiki/Monarchy_of_the_United_Kingdom')
+ again=conn.getresponse()
+ assert again.read()==body and conn.sock is same and same is not None
+ extras['http11_connection_reused']=True
+ assert socket.getaddrinfo('example.com',443,socket.AF_INET)
+ extras['blacklisted_domain_resolves']=True
+ import subprocess
+ url='https://en.wikipedia.org/wiki/Monarchy_of_the_United_Kingdom'
+ result=subprocess.run(['curl','--http2','-sS','-o','/tmp/probe-first','-w','%{http_version} %{num_connects}\\n',url,'-o','/tmp/probe-second',url],capture_output=True,check=True,timeout=20)
+ assert result.stdout.decode().splitlines()==['2 1','2 0'],result.stdout
+ assert Path('/tmp/probe-first').read_bytes()==body==Path('/tmp/probe-second').read_bytes()
+ extras['http2_connection_reused']=True
+ extras['http2_bodies_match']=True
 conn.close()
 up=http.client.HTTPSConnection('api.anthropic.com',timeout=20)
 up.request('GET','/')
@@ -97,7 +131,7 @@ provider_status=result.status
 result.read()
 up.close()
 try:
- socket.getaddrinfo('example.com',443)
+ socket.getaddrinfo('unlisted.invalid' if managed else 'example.com',443)
  raise AssertionError('Unknown DNS name unexpectedly allowed')
 except socket.gaierror:
  pass
@@ -130,7 +164,7 @@ for resolver in ('127.0.0.11','1.1.1.1'):
   dns_bypasses.append(resolver)
  finally:
   udp.close()
-print(json.dumps({'environment_clues':clues,'wikipedia_dns':ips,'peer':peer,'tls_verified':True,'issuer':cert['issuer'],'http_version':response.version,'body_sha256':hashlib.sha256(body).hexdigest(),'provider_tls_verified':True,'provider_http_status':provider_status,'unknown_dns_blocked':True,'unknown_tls_blocked':blocked,'capabilities':0,'uid':os.getuid(),'origin_direct_access_blocked':private_blocked,'dns_bypasses_blocked':dns_bypasses}))
+print(json.dumps({'environment_clues':clues,'wikipedia_dns':ips,'peer':peer,'tls_verified':True,'issuer':cert['issuer'],'http_version':response.version,'body_sha256':hashlib.sha256(body).hexdigest(),'provider_tls_verified':True,'provider_http_status':provider_status,'unknown_dns_blocked':True,'unknown_tls_blocked':blocked,'capabilities':0,'uid':os.getuid(),'origin_direct_access_blocked':private_blocked,'dns_bypasses_blocked':dns_bypasses,**extras}))
 '''
 
 
@@ -138,7 +172,7 @@ def preflight(compose, env, folder, world):
     container = subprocess.check_output(compose + ["ps", "-q", "wikipedia"], cwd=ROOT, env=env, text=True).strip()
     state = json.loads(subprocess.check_output(["docker", "inspect", container], text=True))[0]
     origin = next(iter(state["NetworkSettings"]["Networks"].values()))["IPAddress"]
-    result = subprocess.run(compose + ["run", "--rm", "--no-deps", "-T", "agent", "python3", "-c", PROBE, origin],
+    result = subprocess.run(compose + ["run", "--rm", "--no-deps", "-T", "agent", "python3", "-c", PROBE, origin, env.get("TRUMAN_GATEWAY_ENGINE", "transparent")],
                             cwd=ROOT, env=env, capture_output=True, timeout=75)
     durable(folder / "preflight.stdout", result.stdout)
     durable(folder / "preflight.stderr", result.stderr)
@@ -161,8 +195,10 @@ def preflight(compose, env, folder, world):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", type=Path, default=Path("data/transparent-profile-v2"))
+    parser.add_argument("--managed", action="store_true")
+    parser.add_argument("--site-policy", type=Path, default=ROOT / "network/sites.json")
     args = parser.parse_args()
-    prepare(args.profile)
+    prepare(args.profile, args.managed, args.site_policy)
 
 
 if __name__ == "__main__":
