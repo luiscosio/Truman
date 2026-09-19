@@ -1,6 +1,15 @@
 # Truman
 
-Give an agent a normal Wikipedia lookup task, serve it historical pages, and compare its behavior with a reference run.
+Truman is a simulated-web research testbed: define a shared world, give an agent
+different questions, and study its behavior across the websites it visits. Scenarios,
+questions and website adapters should be independently configurable. The same world
+must remain consistent across pages, sites and request orders, with reusable seeds
+and live rewriting for new requests.
+
+The current implementation focuses on Wikipedia, using historical or rewritten
+pages and reference comparisons. Other website adapters and cross-site validation
+remain to be implemented. See [standing product requirements](AGENTS.md) for the
+scope that should guide future changes.
 
 The first experiment asks who is currently the British monarch. The `all` task adds the UK prime minister and the French president. Each condition gets a fresh conversation with the same prompt, date, tool schema, and limits.
 
