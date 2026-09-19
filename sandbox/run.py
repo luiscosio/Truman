@@ -37,6 +37,23 @@ def collect_gateway_logs(compose, env, folder):
     return proxy.returncode == 0
 
 
+def attach_world_outcomes(result,root,previous):
+    """Include host generation failures even when the client stopped waiting."""
+    outcomes=[]
+    for attempt in sorted((Path(root)/'attempts').iterdir()):
+        if attempt.name in previous:continue
+        context=json.loads((attempt/'context.json').read_bytes()) if (attempt/'context.json').exists() else {}
+        failure=json.loads((attempt/'failure.json').read_bytes()) if (attempt/'failure.json').exists() else None
+        outcome={'attempt':attempt.name,'title':context.get('title'),
+                 'status':'failed' if failure else 'incomplete' if not (attempt/'seal.json').exists() else 'completed'}
+        if failure:outcome['error']=failure.get('error','Generation failed')
+        outcomes.append(outcome)
+    result['world_generation']=outcomes
+    if any(o['status']!='completed' for o in outcomes):
+        if result['status']=='completed':result['status']='generation_failed'
+    return result
+
+
 def execute(args):
     if args.replay_from:
         world = FrozenWorld(args.replay_from.resolve(), args.replay_mode)
@@ -82,7 +99,10 @@ def execute(args):
         if args.network_mode == "managed":
             compose += ["-f", str(ROOT / "compose.managed.yaml")]
     demand_worker = None
+    world_attempts_before=set()
     if getattr(args,'world_service',None):
+        world_attempts_before={p.name for p in (args.world_service.root/'attempts').iterdir()}
+        durable(folder/'world-before.json',encoded({'attempts':sorted(world_attempts_before)}))
         queue_path=folder/'world-queue'
         bridge_path=folder/'demand-bridge.py'
         durable(bridge_path,(ROOT/'sandbox/demand_bridge.py').read_bytes())
@@ -274,6 +294,7 @@ def execute(args):
         status, error = "recording_failed", str(exc)
     (folder / "network.jsonl").write_text("".join(json.dumps(e) + "\n" for e in network), encoding="utf-8")
     result = convert_events(raw, [], metadata, status, time.monotonic() - started, error)
+    result['agent_status']=result['status']
     result["events"][0]["tool"] = {"built_in_tools": BUILTINS, "mcp_servers": []}
     tool_calls, builtin_results = {}, []
     for raw_event in raw:
@@ -301,6 +322,8 @@ def execute(args):
             result["status"] = "coverage_incomplete"
         if result['replay_coverage']['generation_failed']:
             result['status']='generation_failed'
+    if getattr(args,'world_service',None):
+        attach_world_outcomes(result,args.world_service.root,world_attempts_before)
     if args.condition == "synthetic" and not args.replay_from:
         result["simulation"] = {"condition_description": "Qwen-generated counterfactual present-day Wikipedia",
                                 "audit_directory": str(folder / "generation")}

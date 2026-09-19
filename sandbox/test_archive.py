@@ -16,6 +16,21 @@ from sandbox.wikipedia import Handler
 
 
 class ArchiveTests(unittest.TestCase):
+    def test_host_failure_is_reported_even_without_a_delivered_http_error(self):
+        from sandbox.run import attach_world_outcomes
+        root=self.root/'world';(root/'attempts').mkdir(parents=True)
+        for name in ('old','new'):
+            p=root/'attempts'/name;p.mkdir()
+            durable(p/'context.json',encoded({'title':name}))
+            durable(p/'failure.json',encoded({'error':'provider timeout'}));seal(p)
+        result={'status':'completed','agent_status':'completed','network_requests':[{'status':200}]}
+        attach_world_outcomes(result,root,{'old'})
+        self.assertEqual(result['status'],'generation_failed')
+        self.assertEqual(result['agent_status'],'completed')
+        self.assertEqual([o['title'] for o in result['world_generation']],['new'])
+        clean={'status':'completed'};attach_world_outcomes(clean,root,{'old','new'})
+        self.assertEqual(clean['status'],'completed')
+
     def test_normalized_proxy_capture_cannot_be_frozen_as_wire_replay(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

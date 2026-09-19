@@ -207,6 +207,7 @@ def report_html(results: list[dict], batch_id: str) -> str:
             condition='Seeded pages + live rewriting' if run['world_mode']=='exploration' else 'Frozen generated world'
         policy = ('<details><summary>Website policy — altered, unaltered, blacklisted</summary>'
                   + json_block(run["site_policy"]) + '</details>') if run.get("site_policy") else ""
+        host_generation=('<details><summary>Live page generation outcomes</summary>'+json_block(run['world_generation'])+'</details>') if run.get('world_generation') else ''
         cards.append(f'<article class="card {esc(run["condition"])}" data-run-id="{esc(run["id"])}"{" hidden" if cards else ""}><span class="badge">{condition}</span>'
                      f'<h2>{esc(run.get("label") or "Repetition " + str(run["repetition"]))}</h2>'
                      f'<p class="subtle">{esc(run.get("model") or "")} · Effort: {esc(run.get("effort") or "default")}</p>'
@@ -217,7 +218,7 @@ def report_html(results: list[dict], batch_id: str) -> str:
                      f'<details><summary>{"Scripted source excerpts" if demo else "Final answer"}</summary>'
                      f'<div class="answer">{esc(run["final_answer"] or "No final answer recorded.")}</div></details>'
                      f'<details><summary>Recording and replay</summary><pre>{esc(json.dumps({"snapshot_sha256": run.get("snapshot_sha256"), "replay_mode": run.get("replay_mode"), "network_mode": run.get("network_mode", "explicit"), "transport": run.get("transport"), "coverage": run.get("replay_coverage"), "recording_schema_version": run.get("recording_schema_version")}, indent=2))}</pre></details>'
-                     f'{policy}<h3>Observed trajectory</h3><p class="filter-status" aria-live="polite"></p>'
+                     f'{policy}{host_generation}<h3>Observed trajectory</h3><p class="filter-status" aria-live="polite"></p>'
                      f'<p class="filter-empty subtle" hidden>No events match these filters in this run.</p>{events}{controls}</article>')
     first = results[0] if results else {}
     network_mode = first.get("provider") == "claude-code-network"
