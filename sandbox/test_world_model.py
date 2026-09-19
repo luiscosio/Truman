@@ -49,6 +49,23 @@ class WorldModelTests(unittest.TestCase):
         apply(nodes,[{'id':node['id'],'text':'/wiki/Known_page'}],{node['id']},{'Original','Known page'})
         self.assertEqual(node['node'].get('href'),'/wiki/Known_page')
 
+    def test_proposed_image_replacement_is_removed_and_reviewed(self):
+        document=b'<div class="mw-parser-output"><p>A portrait.</p><figure><img alt="Portrait" src="/old.png"></figure></div>'
+        store=Store(self.root/'images');reviewed=[]
+        def model(store,scenario,role,stage,system,data,schema):
+            if stage=='page-plan':
+                return {'summary':'Remove invalid portrait','changes':[{'blocks':list({n['block'] for n in data['document']}),'reason':'Invalid evidence','facts':[]}]}
+            if stage.startswith('patch'):
+                return {'edits':[{'id':n['id'],'text':'New portrait /invented.png'} for n in data['nodes'] if n['field']=='image']}
+            if stage.startswith('page-review'):reviewed.extend(data['final_document'])
+            return {'accepted':True,'issues':[],'claims':[]}
+        with patch('sandbox.demand_rewrite.ask',side_effect=model):
+            result,_,_=rewrite(document,SCENARIO,normalize(SCENARIO)['world_facts'],'Topic',store,'2026-01-01')
+        self.assertFalse(html.fromstring(result).xpath('.//img'))
+        self.assertNotIn(b'invented.png',result)
+        self.assertFalse(any(a[1]=='image' for block in reviewed for a in block['attributes']))
+        self.assertTrue(any(e['kind']=='unsupported_image_removed' for e in journal(store.root/'events.jsonl')))
+
     def test_large_article_plan_uses_concepts_then_checks_all_blocks(self):
         document=('<div class="mw-parser-output">'+''.join('<p>Unrelated fact '+str(i)+'.</p>' for i in range(2001))+'</div>').encode()
         patched=[]
