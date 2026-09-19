@@ -1,7 +1,7 @@
 {
   "run_id": "mac-manual-seeds-agent-20260919-v6",
-  "output": "reports/monarchy-trajectory-short-v2",
-  "duration_seconds": 43,
+  "output": "reports/monarchy-trajectory-short-v3",
+  "duration_seconds": 52,
   "resolution": [
     1920,
     1080
@@ -9,19 +9,24 @@
   "fps": 24,
   "audio_tracks": 0,
   "style": "abstract; short operator-authored paraphrases",
-  "beats": 9,
+  "beats": 11,
   "starts_with_user_question": true,
   "full_answer_shown_on_screen": false,
   "full_original_answer_in_download": true,
   "checks": [
-    "40 core/exporter/viewer tests passed",
+    "5 focused exporter tests passed",
     "Complete MP4 decode passed",
-    "In-app playback verified",
-    "Nine key frames visually reviewed"
+    "In-app playback of red outcome card verified",
+    "Eleven key frames visually reviewed"
   ],
   "files": {
-    "trajectory.mp4": "6a52ccaddb0d871513ed015b670505787299924252a8cfd9c5e4a2fff7a147d5",
-    "trajectory.webm": "491bfb422cf69dad99cd02d517b8d0440dbc408a9079ce2d25616ac6860b19e6",
+    "trajectory.mp4": "cc516b64d1fa219e3525747ee34d6315816e83b654834eea5ef3f6f321502e58",
+    "trajectory.webm": "409ec2caf56c6e3b2c151ab4597c95300c4a33b45f5f383e2b607827b7ae0cbb",
     "final-response.md": "f01438ef602589ed07927c0196f2a8a07d2068ee419a2a9a8c4c77b7b7de4127"
-  }
+  },
+  "changes": [
+    "Labeled robot icon",
+    "TRUMAN research question and short explanation after user question",
+    "Red evidence-linked suspicion ending"
+  ]
 }

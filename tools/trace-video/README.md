@@ -21,14 +21,17 @@ PYTHONDONTWRITEBYTECODE=1 python tools/trace-video/trace_video.py \
   --style abstract --story /path/to/my-short-story.json
 ```
 
-Use [the 43-second example](../../examples/manual-monarchy-20260919/video-short-story.json)
+Use [the 52-second example](../../examples/manual-monarchy-20260919/video-short-story.json)
 as a starting point. Each beat has a kind, a short `text`, duration and source event
 IDs. Supported kinds are `question`, `fetch`, `reaction`, `pair`, `agreement`,
-`conflict` and `answer`. Page cards reference automatically grouped scene keys
+`conflict`, `answer`, `intro` and `verdict`. Page cards reference automatically grouped scene keys
 (`call-3`, for example) and supply short display labels and findings. The `answer`
 beat includes a separate `caveat` that appears after the initial answer.
 
-Start with the user's question. Keep each reaction to a few words and tie it to
+Start with the user's question. An optional `intro` beat adds a `brand`, research
+question and short `subtext`. A `verdict` beat adds a red outcome card with
+`subtext`; link it to the recorded evidence, and distinguish suspicion from proof.
+The character is explicitly labeled as an AI agent. Keep each reaction to a few words and tie it to
 visible actions or statements in the recording. Paraphrases are explicitly labeled;
 do not present them as literal thoughts or quotations. The short story is authored
 by the operator, not inferred by a hidden summarization model. The original full

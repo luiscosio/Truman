@@ -11,6 +11,7 @@ from trace_video import font_path, lines_for, run_command, subtitle_time
 
 W,H,FPS=1920,1080,24
 PAPER='#F4F2EC'; INK='#17332D'; GREEN='#147C68'; MINT='#D8EADB'; AMBER='#E8AD4A'
+RED='#AD343E'
 
 
 @functools.lru_cache(maxsize=32)
@@ -29,20 +30,29 @@ def text(d,value,x,y,size=50,width=1600,fill=INK,bold=False,align='left'):
 
 
 def agent(d,x,y,t,mood='normal',scale=1):
-    """An original minimal agent icon; gestures visualize actions, not hidden thought."""
+    """A labeled robot; gestures visualize actions, not hidden thought."""
     y+=math.sin(t*2.5)*5
     r=92*scale
-    d.ellipse((x-r-8,y-r-8,x+r+8,y+r+8),fill=MINT)
-    d.rounded_rectangle((x-r,y-r,x+r,y+r),radius=45*scale,fill=GREEN)
+    stroke=max(2,round(6*scale))
+    d.line((x,y-r,x,y-r-34*scale),fill=GREEN,width=stroke)
+    d.ellipse((x-10*scale,y-r-49*scale,x+10*scale,y-r-29*scale),fill=GREEN)
+    for side in (-1,1):
+        ear=x+side*(r+9*scale)
+        d.rounded_rectangle((ear-12*scale,y-30*scale,ear+12*scale,y+30*scale),radius=6*scale,fill=GREEN)
+    d.rounded_rectangle((x-r-7*scale,y-r-7*scale,x+r+7*scale,y+r+7*scale),radius=27*scale,fill=MINT)
+    d.rounded_rectangle((x-r,y-r,x+r,y+r),radius=22*scale,fill=GREEN)
+    d.rounded_rectangle((x-73*scale,y-59*scale,x+73*scale,y+15*scale),radius=13*scale,fill=INK)
     eye=10*scale;blink=abs(math.sin(t*.9))<.05
     for offset in (-32,32):
         xx=x+offset*scale
-        if blink:d.line((xx-eye,y-15,xx+eye,y-15),fill='white',width=6)
-        else:d.ellipse((xx-eye,y-27,xx+eye,y-7),fill='white')
+        d.rounded_rectangle((xx-eye,y-32*scale,xx+eye,y-(29 if blink else 12)*scale),radius=3*scale,fill='#ADFFD2')
     if mood=='doubt':
-        d.line((x-27,y+31,x+24,y+22),fill='white',width=7)
-        text(d,'?',x+r+18,y-r-50,65,100,fill=GREEN,bold=True)
-    else:d.arc((x-35,y+1,x+35,y+44),5,175,fill='white',width=6)
+        d.line((x-27*scale,y+41*scale,x+24*scale,y+32*scale),fill='white',width=stroke)
+        text(d,'?',x+r+18*scale,y-r-50*scale,round(65*scale),100,fill=GREEN,bold=True)
+    else:
+        for offset in (-24,0,24):
+            d.line((x+(offset-6)*scale,y+37*scale,x+(offset+6)*scale,y+37*scale),fill='white',width=stroke)
+    text(d,'AI AGENT',x-120*scale,y+r+18*scale,round(23*scale),240*scale,fill=GREEN,bold=True,align='center')
 
 
 def bubble(d,message,box,tail='down',size=60):
@@ -91,7 +101,12 @@ def frame(beat,t,index,total,images,elapsed,duration):
     text(d,'TRUMAN',60,35,25,300,fill=GREEN,bold=True)
     text(d,'OBSERVED ACTIONS · PARAPHRASED',1110,40,21,740,fill='#6A7B72',align='center')
     kind=beat['kind'];message=beat['text'];u=ease(t/.55)
-    if kind=='question':
+    if kind=='intro':
+        text(d,beat.get('brand','TRUMAN'),90,150,100,1740,fill=GREEN,bold=True,align='center')
+        text(d,message,180,310,65,1560,bold=True,align='center')
+        text(d,beat.get('subtext',''),280,535,41,1360,fill='#65766D',align='center')
+        agent(d,960,815,t,'normal',.7)
+    elif kind=='question':
         text(d,'YOU ASK',80,170,28,1760,fill=GREEN,bold=True,align='center')
         bubble(d,message,(260,260,1400,265),size=76)
         agent(d,960,770,t)
@@ -138,6 +153,12 @@ def frame(beat,t,index,total,images,elapsed,duration):
             d.rounded_rectangle((270,590+(1-progress)*50,1650,770+(1-progress)*50),radius=24,fill=INK)
             text(d,beat['caveat'],315,627+(1-progress)*50,55,1290,fill='#F5D99B',bold=True,align='center')
         agent(d,960,912,t,'doubt',.62)
+    elif kind=='verdict':
+        d.rounded_rectangle((160,200,1760,890),radius=36,fill='#F4E2E0')
+        text(d,beat.get('label','OBSERVED OUTCOME'),240,265,28,1440,fill=RED,bold=True,align='center')
+        text(d,message,230,355,88,1460,fill=RED,bold=True,align='center')
+        text(d,beat.get('subtext',''),260,495,43,1400,fill=RED,align='center')
+        agent(d,960,720,t,'doubt',.65)
     else:raise ValueError('Unknown abstract beat kind: '+kind)
     text(d,'Reconstructed from the recorded run; reactions are paraphrased.',60,1024,20,1530,fill='#77847A')
     ids=', '.join('#'+str(x) for x in beat.get('event_ids',[]))
@@ -173,7 +194,7 @@ def render_abstract(run,source_scenes,story,out,ffmpeg,frames_only=False):
             if process:
                 for n in range(round(beat['duration']*FPS)):
                     process.stdin.write(frame(beat,n/FPS,i,len(beats),images,elapsed,duration).tobytes())
-            body=beat['text']+('\n'+beat['caveat'] if beat.get('caveat') else '')
+            body='\n'.join(str(beat[k]) for k in ('brand','text','subtext','caveat') if beat.get(k))
             chapters.append({'key':f'beat-{i+1}','kind':beat['kind'],'title':beat.get('title',beat['text']),
                              'body':body,'start':elapsed,'duration':beat['duration'],'event_ids':beat.get('event_ids',[])})
             srt.append(f'{i+1}\n{subtitle_time(elapsed)} --> {subtitle_time(elapsed+beat["duration"])}\n{body}\n')
