@@ -9,7 +9,7 @@ from truman.world import wiki_url
 
 
 def respond(world,target):
-    from sandbox.demand import CoverageMiss
+    from sandbox.demand import CoverageMiss, NeedsGeneration
     parts=urlsplit(target);q=parse_qs(parts.query,keep_blank_values=True)
     def param(name,default=''):return q.get(name,[default])[0]
     def number(name,default,cap):
@@ -152,6 +152,8 @@ def respond(world,target):
             return out(etree.tostring(tree,encoding='utf-8',method='html'),mime='text/html; charset=utf-8')
         if action!='view':raise CoverageMiss('Unsupported action')
         return article_html(article)
+    except NeedsGeneration:
+        raise
     except CoverageMiss as exc:
         return out({'error':{'code':'unavailable','info':'Requested resource is unavailable.'}},409,coverage='outside_snapshot')
     except Exception as exc:

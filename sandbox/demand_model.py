@@ -164,7 +164,7 @@ def rewrite(document, scenario, facts, title, store, revision_at):
                         '(or Wikipedia URL for href; empty string removes its link). Do not alter external citation URLs except removing a fragment. '
                         'Never invent image filenames. For an image node that depicts a contradictory person/event, return empty text to remove it. '
                         'Image replacement is not supported. No markup, model names or simulation labels. '
-                        'Do not replace Charles with Elizabeth in unrelated biographical facts. '
+                        'Do not swap entity identities in unrelated biographical facts. '
                         'Return only new stable cross-page scenario facts using specific dotted keys; do not restate or rename existing keys. '
                         'Honor the revision date: historical events before the point of divergence should stay historical.',
                     {**context,'established_facts':merged,'chunk':index,'chunks':len(batches),'nodes':batch,'patch_error':error,

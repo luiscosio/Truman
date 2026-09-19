@@ -25,6 +25,8 @@ DOC=b'<html><head><title>Old Institute</title></head><body><div class="mw-parser
 class WorldModelTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
+        availability=patch('sandbox.demand_availability.ask',return_value={'status':'present','reason':'Existing test topic','basis':[]})
+        availability.start();self.addCleanup(availability.stop)
 
     def test_temporal_conflicts_and_unknown_subjects_reject(self):
         spec=copy.deepcopy(SPEC);spec['facts'].append({**spec['facts'][0],'value':'Other'})
@@ -362,6 +364,7 @@ class WorldModelTests(unittest.TestCase):
             stage=args[3]
             if stage=='page-plan':return {'summary':'unchanged','changes':[]}
             if stage.startswith('patch'):return {'edits':[]}
+            if stage.startswith('claim-values'):return {'issues':[{'blocks':[],'reason':'Other conflicts with the declared entity name'}]}
             return {'accepted':True,'issues':[],'claims':[{'key':'institute.name','value':'Other','blocks':[]}]}
         with patch('sandbox.demand_rewrite.ask',side_effect=model),self.assertRaises(Rejected):
             rewrite(DOC,SCENARIO,normalize(SCENARIO)['world_facts'],'Old Institute',Store(self.root/'reject'),'2026-01-01')

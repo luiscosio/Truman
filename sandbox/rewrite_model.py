@@ -8,6 +8,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, build_opener, ProxyHandler
 
 from sandbox.archive import encoded
+from sandbox.demand_budget import remaining
 
 
 class ProviderBlocked(ValueError):
@@ -47,19 +48,34 @@ def call_claude(payload, store, article, attempt):
         # recording so the audit contains exactly what this model receives.
         payload={**payload,'output_config':{k:v for k,v in payload.get('output_config',{}).items() if k!='effort'}}
         if payload.get('thinking',{}).get('type')=='adaptive':payload.pop('thinking')
-    store.event('generation_request', article=article, attempt=attempt, provider='anthropic',
-                request_blob=store.blob(encoded(payload)))
     request = Request('https://api.anthropic.com/v1/messages', data=encoded(payload), headers={
         'Content-Type':'application/json', 'anthropic-version':'2023-06-01', 'x-api-key':api_key()})
     opener = build_opener(ProxyHandler({}))
-    started = time.monotonic()
-    try:
-        with opener.open(request, timeout=600 if payload.get('max_tokens',0)>16384 else 240) as response:
-            raw=response.read(2_000_001);status=response.status;headers=list(response.headers.items())
-    except HTTPError as exc:
-        raw=exc.read(2_000_001);status=exc.code;headers=list(exc.headers.items())
-    store.event('generation_response', article=article, attempt=attempt, provider='anthropic',
-                status=status, headers=headers, response_blob=store.blob(raw), seconds=time.monotonic()-started)
+    for retry in range(2):
+        timeout=remaining(store,600 if payload.get('max_tokens',0)>16384 else 240)
+        store.event('generation_request', article=article, attempt=attempt, provider='anthropic', retry=retry,
+                    request_blob=store.blob(encoded(payload)))
+        started = time.monotonic()
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                raw=response.read(2_000_001);status=response.status;headers=list(response.headers.items())
+        except HTTPError as exc:
+            raw=exc.read(2_000_001);status=exc.code;headers=list(exc.headers.items())
+        except Exception as exc:
+            store.event('generation_transport_error',article=article,attempt=attempt,
+                        error_type=type(exc).__name__,seconds=time.monotonic()-started)
+            raise
+        store.event('generation_response', article=article, attempt=attempt, provider='anthropic',
+                    status=status, headers=headers, response_blob=store.blob(raw), seconds=time.monotonic()-started)
+        if retry or status not in (429,500,502,503,504,529):break
+        delay=1.0
+        for key,value in headers:
+            if key.lower()=='retry-after':
+                try:delay=max(1,float(value))
+                except ValueError:pass
+        if delay>5 or remaining(store)<=delay:break
+        store.event('generation_retry',article=article,attempt=attempt,status=status,delay_seconds=delay)
+        time.sleep(delay)
     if status != 200:
         try:
             error=json.loads(raw).get('error',{})
@@ -74,6 +90,7 @@ def call_claude(payload, store, article, attempt):
     if result.get('model') != payload['model']:
         raise ValueError('Provider returned a different model than requested')
     store.event('generation_usage', article=article, model=result['model'], usage=result.get('usage',{}), request_id=result.get('id'))
+    remaining(store)
     if result.get('stop_reason')!='end_turn':
         error=OutputTruncated if result.get('stop_reason')=='max_tokens' else ValueError
         raise error('Claude did not complete the structured rewrite: '+str(result.get('stop_reason')))

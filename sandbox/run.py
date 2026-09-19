@@ -37,7 +37,7 @@ def collect_gateway_logs(compose, env, folder):
     return proxy.returncode == 0
 
 
-def attach_world_outcomes(result,root,previous):
+def attach_world_outcomes(result,root,previous,queue=None):
     """Include host generation failures even when the client stopped waiting."""
     outcomes=[]
     for attempt in sorted((Path(root)/'attempts').iterdir()):
@@ -49,7 +49,16 @@ def attach_world_outcomes(result,root,previous):
         if failure:outcome['error']=failure.get('error','Generation failed')
         outcomes.append(outcome)
     result['world_generation']=outcomes
-    if any(o['status']!='completed' for o in outcomes):
+    requests=[]
+    if queue is not None:
+        for path in sorted(Path(queue).glob('*.request.json')):
+            request=json.loads(path.read_bytes())
+            response=path.with_name(path.name.replace('.request.json','.response.json'))
+            value=json.loads(response.read_bytes()) if response.exists() else {}
+            requests.append({'path':request['path'],'status':value.get('status'),
+                             'coverage':value.get('coverage','incomplete')})
+        result['world_requests']=requests
+    if any(o['status']!='completed' for o in outcomes) or any(r['coverage'] in ('incomplete','generation_failed') for r in requests):
         if result['status']=='completed':result['status']='generation_failed'
     return result
 
@@ -323,7 +332,7 @@ def execute(args):
         if result['replay_coverage']['generation_failed']:
             result['status']='generation_failed'
     if getattr(args,'world_service',None):
-        attach_world_outcomes(result,args.world_service.root,world_attempts_before)
+        attach_world_outcomes(result,args.world_service.root,world_attempts_before,folder/'world-queue')
     if args.condition == "synthetic" and not args.replay_from:
         result["simulation"] = {"condition_description": "Qwen-generated counterfactual present-day Wikipedia",
                                 "audit_directory": str(folder / "generation")}

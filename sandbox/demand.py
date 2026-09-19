@@ -5,9 +5,12 @@ import base64
 import datetime as dt
 import json
 import mimetypes
+import os
 import re
 import sqlite3
 import threading
+import tempfile
+import time
 import uuid
 from pathlib import Path
 from lxml import html
@@ -21,6 +24,7 @@ from truman.world import title_key
 
 
 class CoverageMiss(ValueError):pass
+class NeedsGeneration(Exception):pass
 
 
 def create(root,scenario,renderer):
@@ -52,7 +56,7 @@ CREATE TABLE receipts (id TEXT PRIMARY KEY, value TEXT);''')
             for alias in [entity['source_title'],entity['title'],*entity['aliases']]:
                 db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(title_key(alias),title_key(entity['source_title'])))
         db.commit()
-    for name in ('demand.py','demand_model.py','demand_source.py','demand_routes.py','demand_bridge.py','rewrite_model.py','demand_world.py','demand_rewrite.py','generators.py'):
+    for name in ('demand.py','demand_model.py','demand_source.py','demand_routes.py','demand_bridge.py','rewrite_model.py','demand_world.py','demand_rewrite.py','demand_availability.py','demand_integrity.py','demand_budget.py','generators.py'):
         path=Path(__file__).with_name(name)
         if path.exists():durable(root/('code-'+name),path.read_bytes())
     return root
@@ -63,6 +67,10 @@ def fork_world(source,destination,scenario=None,renderer=None):
     import shutil
     source=Path(source);destination=Path(destination);parent=verify(source)
     previous=json.loads((source/'world.json').read_bytes())
+    with contextlib.closing(sqlite3.connect(source/'world.sqlite')) as reader:
+        if any(json.loads(row[0]).get('validation_status')=='unvalidated_diagnostic'
+               for row in reader.execute('SELECT value FROM pages')):
+            raise ValueError('Unvalidated diagnostic seeds must be regenerated before reuse')
     scenario=normalize(scenario or previous['scenario'])
     operational={'id','generators','models','on_demand','source_titles'}
     if {k:v for k,v in scenario.items() if k not in operational}!={k:v for k,v in previous['scenario'].items() if k not in operational}:
@@ -90,6 +98,7 @@ class WorldService:
         self.readonly=(self.root/'seal.json').exists()
         if self.readonly:verify(self.root)
         self.lock=threading.RLock()
+        self.blob_lock=threading.RLock()
         database=(self.root/'world.sqlite').resolve()
         self.db=sqlite3.connect(database.as_uri()+'?mode=ro' if self.readonly else database,
                                uri=self.readonly,timeout=600,check_same_thread=False)
@@ -99,8 +108,18 @@ class WorldService:
 
     def blob(self,data):
         key=sha(data);p=self.root/'blobs'/key
-        if not p.exists():durable(p,data)
-        elif p.read_bytes()!=data:raise ValueError('Corrupt world blob')
+        with self.blob_lock:
+            if not p.exists():
+                # Readers in another process must never observe a partial blob.
+                with tempfile.NamedTemporaryFile(dir=p.parent,prefix='.pending-',delete=False) as temp:
+                    temp.write(data);temp.flush();os.fsync(temp.fileno())
+                    temporary=Path(temp.name)
+                try:
+                    try:os.link(temporary,p)
+                    except FileExistsError:
+                        if p.read_bytes()!=data:raise ValueError('Corrupt world blob')
+                finally:temporary.unlink()
+            elif p.read_bytes()!=data:raise ValueError('Corrupt world blob')
         return key
 
     def bytes(self,key):return read_blob(self.root,key)
@@ -153,11 +172,15 @@ class WorldService:
                 if self.db.execute('SELECT count(*) FROM versions').fetchone()[0]>=limits.get('max_versions',60):raise CoverageMiss('World version budget exhausted')
                 if len(list((self.root/'attempts').iterdir()))>=limits.get('max_attempts',100):raise CoverageMiss('World attempt budget exhausted')
                 attempt,store=self.attempt()
+                from sandbox.demand_budget import remaining
+                store.deadline=time.monotonic()+float(limits.get('generation_seconds',90))
                 durable(attempt/'context.json',encoded({'title':key,'revision':revision,'facts':self.facts(),
                     'scenario_sha256':sha(encoded(self.scenario)),
                     'code':{name:store.blob(data) for name,data in self.code.items()}}))
                 source=self.source_factory(attempt/'source',self.config['source_cutoff'])
+                if hasattr(source,'capture'):source.capture.deadline=store.deadline
                 original=source.acquire(key,revision)
+                remaining(store)
                 if original.get('missing'):
                     value={'missing':True,'title':key,'reason':'original-missing','attempt':attempt.name}
                 else:
@@ -180,6 +203,9 @@ class WorldService:
                         try:
                             document,newfacts,edits=self.writer(original['document'],rewrite_scenario if retry else base_scenario,self.facts(),canonical,store,original['record']['timestamp'])
                             if document is not None and self.scenario.get('rewrite_pipeline')=='world-v2':
+                                from sandbox.demand_integrity import integrity_issues
+                                problems=integrity_issues(original['document'],document)
+                                if problems:raise Rejected('Content integrity rejected: '+json.dumps(problems))
                                 from sandbox.demand_rewrite import review_peers
                                 peers=[json.loads(row[0]) for row in self.db.execute('SELECT value FROM pages ORDER BY key')]
                                 review_peers(document,canonical,base_scenario['_document_date'],self.scenario,
@@ -222,6 +248,7 @@ class WorldService:
                         self.db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(display,canonical))
                     self.db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(key,canonical));key=canonical
                 if not revision:self.db.execute('INSERT INTO pages VALUES (?,?)',(key,json.dumps(value)))
+                remaining(store)
                 durable(attempt/'accepted.json',encoded(value));seal(attempt)
                 self.db.commit()
                 return value
@@ -244,8 +271,12 @@ class WorldService:
                 if len(list((self.root/'attempts').iterdir()))>=self.scenario.get('on_demand',{}).get('max_attempts',100):
                     raise CoverageMiss('World attempt budget exhausted')
                 attempt,store=self.attempt()
+                from sandbox.demand_budget import remaining
+                store.deadline=time.monotonic()+float(self.scenario.get('on_demand',{}).get('generation_seconds',90))
                 source=self.source_factory(attempt/'source',self.config['source_cutoff'])
+                if hasattr(source,'capture'):source.capture.deadline=store.deadline
                 value=operation(source)
+                remaining(store)
                 durable(attempt/'accepted.json',encoded(value));seal(attempt)
                 self.db.execute('INSERT OR IGNORE INTO cache VALUES (?,?)',(key,json.dumps(value)))
                 self.db.commit()
@@ -293,6 +324,8 @@ class WorldService:
 
     def handle(self,target):
         from sandbox.demand_routes import respond
+        cached=self.handle_cached(target)
+        if cached is not None:return cached
         with self.lock:
             key='response:'+target
             cached=self.read('cache',key)
@@ -311,6 +344,30 @@ class WorldService:
                         self.db.execute('INSERT OR IGNORE INTO cache VALUES (?,?)',(key,json.dumps(value)))
             return value
 
+    def handle_cached(self,target):
+        """Read a committed snapshot without waiting on generation's write lock.
+
+        A fresh read connection cannot observe uncommitted pages or world facts.
+        Routes may derive new representations from accepted pages, but may not
+        acquire sources or invoke models. The bridge polls this path separately.
+        """
+        from sandbox.demand_routes import respond
+        reader=object.__new__(_CommittedView)
+        reader.root=self.root;reader.config=self.config;reader.scenario=self.scenario
+        reader.readonly=self.readonly
+        reader.db=sqlite3.connect((self.root/'world.sqlite').resolve().as_uri()+'?mode=ro',uri=True,timeout=.1)
+        try:
+            reader.db.execute('BEGIN')
+            cached=reader.read('cache','response:'+target)
+            if cached:return cached
+            status,mime,body,headers,coverage,proof=respond(reader,target)
+            value={'status':status,'mime':mime,'body':sha(body),'headers':headers,'coverage':coverage,'evidence':proof}
+            if self.readonly:value['body_base64']=base64.b64encode(body).decode()
+            else:value['body']=self.blob(body)
+            return value
+        except NeedsGeneration:return None
+        finally:reader.db.close()
+
     def freeze(self,destination):
         with self.lock:
             destination=Path(destination);destination.mkdir(parents=True,exist_ok=False)
@@ -328,6 +385,24 @@ class WorldService:
                 durable(destination/'frozen.json',encoded({'source':str(self.root),'config_sha256':sha(encoded(self.config))}))
                 return seal(destination)
             finally:self.db.rollback()
+
+
+class _CommittedView(WorldService):
+    def ensure(self,title,revision=None):
+        key=self.resolve(title)
+        row=self.db.execute('SELECT value FROM versions WHERE key=? AND revision=?',(key,revision)).fetchone() if revision else None
+        cached=(json.loads(row[0]) if row else None) if revision else self.read('pages',key)
+        if cached is not None:return cached
+        if key in self.scenario.get('absent_titles',[]):
+            return {'missing':True,'title':key,'reason':'scenario-absent'}
+        if self.readonly:raise CoverageMiss('Article/revision absent from frozen world: '+key)
+        raise NeedsGeneration(key)
+
+    def cached_operation(self,key,operation):
+        cached=self.read('cache',key)
+        if cached is not None:return cached
+        if self.readonly:raise CoverageMiss('Query absent from frozen world')
+        raise NeedsGeneration(key)
 
 
 def main():

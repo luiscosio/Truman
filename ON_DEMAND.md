@@ -1,6 +1,6 @@
 # On-demand Wikipedia worlds
 
-A world has one immutable scenario and source cutoff, and a persistent set of accepted pages. There is no page seed list. An intercepted request for an unknown page captures the original Wikipedia revision at the cutoff, asks the configured Claude model to rewrite the complete article, validates it, and saves the result. Future requests reuse the saved bytes. An unrelated article can pass through unchanged after review.
+A world has one immutable scenario and source cutoff, and a persistent set of accepted pages. It can start with validated seeds. An intercepted request for an unknown page captures the original Wikipedia revision at the cutoff, asks the configured Claude model to rewrite the complete article, validates it, and saves the result. Future requests reuse the saved bytes. An unrelated article can pass through unchanged after review.
 
 The agent runs in the existing managed Docker network. The Wikipedia origin is a small container bridge. A host worker reads its filesystem queue and performs acquisition and generation. The agent cannot mount that queue, reach the origin directly, or access the generator's API credentials. Only the host reads the rewrite key. Existing altered/unaltered/blacklisted site policy remains in force.
 
@@ -20,7 +20,7 @@ python -m sandbox.run --world data/live-worlds/monarch-v1 --network-mode managed
 
 Agent subscription authentication and generator API authentication are separate. Use the existing Claude Code login for the agent. No generator secret is placed in a Compose environment, prompt, trace, or world archive.
 
-Declare intentionally nonexistent article topics in `absent_titles` using canonical Wikipedia titles. Contradictory claims inside other articles are rewritten; the model cannot decide to delete those articles. Redirects resolve to the canonical title before this rule is checked.
+Explicit nonexistent topics and their aliases come from the world specification. For other world-v2 topics, a separate availability decision receives the world rules and an adapter-provided source summary before rewriting. A topic solely about a ruled-out event becomes a cached missing page; an existing subject with false claims is rewritten. An uncertain decision fails closed. No target questions or answer keys enter this decision.
 
 The scenario fixes the date, source cutoff, world rules, initial shared facts, display-title aliases, Sonnet model/settings, and generation budgets. Change those by creating a new world. Do not edit a world in place. The example allows 40 accepted versions, 100 acquisition attempts and 20 model chunks per article. Up to four section calls run concurrently, with facts merged in DOM order. Validation permits one local malformed-patch retry and two consistency-repair passes that retain previous edits. Structural/absence failures allow one full-article retry; exhausted consistency repair fails closed. These are request/token bounds, not a dollar spending cap.
 
@@ -215,7 +215,7 @@ remaining limitations. On this Mac, run commands from the external runtime check
 under `~/.local/share/truman/mac`; keep environments, audits and generated worlds
 there, outside Dropbox.
 
-The captured-page test defaults to `--max-tokens 32768` to leave room for reasoning and structured output on long articles. Smaller fixture comparisons keep 16384. Requests above 16384 output tokens allow up to 600 seconds; smaller requests allow 240. A truncated response is recorded as a failure, never accepted as a partial plan.
+The captured-page test defaults to `--max-tokens 32768` to leave room for reasoning and structured output on long articles. Smaller fixture comparisons keep 16384. The provider client allows up to 600 seconds for requests above 16384 output tokens and 240 for smaller requests, but a growing world now applies its shorter shared generation deadline across acquisition, model calls, retries and validation. A truncated response is recorded as a failure, never accepted as a partial plan.
 
 New `/wiki/` link targets must already occur in the captured document or be declared world page identities with a source title. Removing a link converts it to plain text; absent attributes are omitted from review inputs. Semantic entities without their own article do not create page routes or empty-title rewrite rules.
 
@@ -276,3 +276,48 @@ Fast block calls do not guarantee fast first-page responses: acquisition, all bl
 edits, review and any repairs must finish before publication. Accepted pages are
 cached. A live run can acquire different coverage on each repetition; freeze its
 finished world before making matched agent comparisons.
+
+
+### Reliability safeguards added 19 September 2026
+
+- Planning describes conceptual changes without selecting edit IDs. Every block is
+  examined on the first pass, avoiding skipped paragraphs from mistaken plan IDs.
+- The plan quotes complete independent source paragraphs to preserve. Their text
+  is excluded from editing and checked deterministically before publication; link
+  attributes can still be updated. Mixed paragraphs receive semantic preservation
+  review. These are source-derived constraints, not
+  answers supplied by the experiment operator.
+- Proposed whole-block deletions receive review before mutation. Rejected deletions
+  become forbidden in later passes. Detached blocks can be restored, and repair
+  calls receive original blocks as well as the current candidate. Empty original
+  leads, blanked paragraphs and loss of more than half of substantial original prose
+  block publication. These conservative checks can reject legitimate large changes;
+  they are not a semantic correctness guarantee.
+- All reviewers distinguish excluded-event consequences from unrelated history.
+  Missing details in the specification do not invalidate existing source facts.
+  Compiler unknowns remain in the audit, outside rewriting constraints. Reviewers
+  receive exact source-text provenance and original text for changed blocks.
+  Entity IDs and declared names are equivalent; other differing claim values get a
+  semantic comparison rather than treating every string difference as a contradiction.
+- The bridge polls committed pages through a separate read connection while one
+  cold generation runs. Cached HTML and derived API responses, known missing pages
+  and unsupported routes do not wait for the generator's transaction. Cold writes
+  remain serialized to preserve consistency across processes.
+- `on_demand.generation_seconds` and `on_demand.request_seconds` default to 90.
+  The former is one shared acquisition/generation budget, including model retries;
+  the latter bounds the bridge response wait. A request can receive a retryable 503
+  while generation finishes under its own budget. Every queued request gets a
+  terminal record at timeout or shutdown; undelivered failures affect run status.
+  Offline preparation may explicitly allow a longer generation budget.
+- Transient provider responses (429, 500, 502, 503, 504 and 529) receive at most one
+  retry within that deadline; both responses remain in the audit. Account/billing
+  errors still trip the existing circuit breaker. Unsupported or excessively long
+  Retry-After delays are not automatically retried.
+- Unvalidated diagnostic seeds cannot be forked into a new world or marked ready by
+  preparation. Original sealed runs stay readable as evidence; they are not repaired
+  in place. Reusing a source capture also strips original revision-editor banners to
+  agree with the public metadata API.
+
+This remains a Wikipedia adapter. Controlled multi-scenario checks do not establish
+cross-site support or reliable full-Wikipedia generation. Failed preparations are
+retained and must not be counted as successful agent or content evaluations.

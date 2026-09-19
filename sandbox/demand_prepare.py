@@ -20,6 +20,8 @@ def prepare(world,seeds,max_pages=12,depth=1):
         seen.add(key)
         try:
             article=world.ensure(title)
+            if article.get('validation_status')=='unvalidated_diagnostic':
+                results.append({'title':title,'status':'failed','error':'Unvalidated diagnostic seed; regenerate before preparation'});continue
             if article.get('missing'):
                 results.append({'title':title,'status':'world_missing'});continue
             q=quote(article['page']['display_title'],safe='')

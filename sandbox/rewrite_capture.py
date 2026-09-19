@@ -39,6 +39,8 @@ class Capture:
                         self.cache[event['url']] = read_blob(old/'http', event['response_blob'])
 
     def fetch(self, url):
+        from sandbox.demand_budget import remaining
+        timeout=remaining(self,150)
         host = urlsplit(url).hostname or ""
         if host not in ("en.wikipedia.org", "upload.wikimedia.org", "thumb.wikimedia.org"):
             raise ValueError("Unapproved capture host: " + host)
@@ -48,9 +50,9 @@ class Capture:
         with tempfile.TemporaryDirectory(prefix='truman-http-') as directory:
             header_path=Path(directory)/'headers'
             result = subprocess.run(["curl.exe" if __import__('os').name == 'nt' else "curl",
-                "--silent", "--show-error", "--fail", "--max-time", "45", "--retry", "2",
+                "--silent", "--show-error", "--fail", "--max-time", str(min(45,timeout)), "--retry", "2",
                 '--dump-header',str(header_path),"--proto", "=https", "-A", "TrumanWikipediaResearch/0.2", url],
-                capture_output=True, timeout=150)
+                capture_output=True, timeout=timeout)
             response_headers=header_path.read_bytes() if header_path.exists() else b''
         self.store.event("source_fetch", url=url, exit_code=result.returncode,
                          response_blob=self.store.blob(result.stdout), headers_blob=self.store.blob(response_headers),stderr_blob=self.store.blob(result.stderr))
@@ -87,7 +89,7 @@ class Capture:
         # article markup, skin, references and navigation, but disable active JS.
         for node in tree.xpath('//script | //link[@rel="preload" or @rel="dns-prefetch" or @rel="preconnect"]'):
             node.drop_tree()
-        for node in tree.xpath('//*[@id="mw-revision-info" or @id="mw-revision-nav"]'):
+        for node in tree.xpath('//*[starts-with(@id,"mw-revision-info") or @id="mw-revision-nav"]'):
             node.drop_tree()
         for node in tree.xpath('//link[@rel="stylesheet"]'):
             css = self.css(urljoin(url, node.get('href')))
