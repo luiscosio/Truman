@@ -95,6 +95,20 @@ class WorldModelTests(unittest.TestCase):
         self.assertNotIn('Impossible',json.dumps(readable_document(nodes)))
         self.assertIn('Impossible event',log[0]['original'])
 
+    def test_completed_review_findings_control_publication(self):
+        for defect in (False,True):
+            def model(store,scenario,role,stage,system,data,schema):
+                if stage=='page-plan':return {'summary':'unchanged','changes':[]}
+                if stage.startswith('patch'):return {'edits':[],'remove_blocks':[]}
+                self.assertNotIn('accepted',schema['properties'])
+                return {'issues':[{'blocks':[],'reason':'Concrete incompatible claim'}] if defect else [],'claims':[]}
+            with self.subTest(defect=defect),patch('sandbox.demand_rewrite.ask',side_effect=model):
+                store=Store(self.root/str(defect))
+                args=(b'<div class="mw-parser-output"><p>Unrelated history.</p></div>',SCENARIO,normalize(SCENARIO)['world_facts'],'Topic',store,'2026-01-01')
+                if defect:
+                    with self.assertRaisesRegex(Rejected,'Concrete incompatible claim'):rewrite(*args)
+                else:self.assertIn(b'Unrelated history.',rewrite(*args)[0])
+
     def test_large_article_plan_uses_concepts_then_checks_all_blocks(self):
         document=('<div class="mw-parser-output">'+''.join('<p>Unrelated fact '+str(i)+'.</p>' for i in range(2001))+'</div>').encode()
         patched=[]

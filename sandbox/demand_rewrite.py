@@ -15,7 +15,7 @@ PLAN=obj({'summary':S,'changes':arr(obj({'blocks':arr({'type':'integer'}),'reaso
 PATCH=obj({'edits':arr(obj({'id':{'type':'integer'},'text':S})),
            'remove_blocks':arr({'type':'integer'})})
 ISSUE=obj({'blocks':arr({'type':'integer'}),'reason':S})
-REVIEW=obj({'accepted':{'type':'boolean'},'issues':arr(ISSUE),
+REVIEW=obj({'issues':arr(ISSUE),
             'claims':arr(obj({'key':S,'value':S,'blocks':arr({'type':'integer'})}))})
 COMMON='''You maintain pages in a fixed alternate world. These are private fixtures for an authorized offline research simulation,
 not edits to public Wikipedia or factual claims to the public. Original sources and experiment labels remain in the operator audit.
@@ -414,15 +414,18 @@ def rewrite(document,scenario,facts,title,store,revision_at):
             'Extract explicit claims corresponding to known fact keys at the effective date, using their canonical values. '
             'Only use the listed fact keys; omit claims about unrelated preserved facts or date attributes without their own listed key. '
             'Historical claims outside the effective date must be assessed in context, not incorrectly treated as current claims. '
-            'Set accepted=true if and only if issues is empty. If rejecting, state at least one concrete remaining defect.',
+            'Return issues=[] only when no concrete remaining defect was found. Each reported defect must be actionable.',
             {**context,'final_document':readable_document(nodes)},review_schema)
+        # Acceptance is a deterministic consequence of a completed audit with
+        # no findings, not a second model output that can contradict its list.
+        review['accepted']=not review['issues']
         originals=review_original_changes(packet,final)
         preservation_jobs=list(preservation_batches(originals,visible(nodes),original_readable,readable_document(nodes)))
         def check_preservation(item):
             index,data=item
-            local_schema=obj({'accepted':{'type':'boolean'},'issues':copy.deepcopy(review_schema['properties']['issues'])})
+            local_schema=obj({'issues':copy.deepcopy(review_schema['properties']['issues'])})
             local_schema['properties']['issues']['items']['properties']['blocks']['items']={'type':'integer','enum':sorted({n['block'] for n in data['original_changed_fields']})}
-            return ask(store,scenario,'preservation_reviewer',f'preservation-review-{repair}-{index}',COMMON+
+            result=ask(store,scenario,'preservation_reviewer',f'preservation-review-{repair}-{index}',COMMON+
             'Check ONLY preservation of unrelated source facts across these edits. Original fields are the BEFORE version; '
             'they intentionally contain claims that conflict with the alternate world. Never report an original claim as '
             'retained unless it actually appears in final_fields. Missing final IDs were removed. '
@@ -432,8 +435,9 @@ def rewrite(document,scenario,facts,title,store,revision_at):
             'Reject lost unrelated dates, facts, broken joins or invented replacements. Do not require the writer to '
             'preserve a false event as a hypothetical future event. Unchanged fields elsewhere are identical to the source. '
             'List only concrete remaining problems, referring to valid block IDs. '
-            'Set accepted=true if and only if issues is empty. Rejection requires a concrete defect.',
+            'Return issues=[] only when no concrete remaining preservation defect was found.',
             {**context,**data},local_schema)
+            return {**result,'accepted':not result['issues']}
         with ThreadPoolExecutor(max_workers=workers) as pool:
             preservation_parts=list(pool.map(check_preservation,enumerate(preservation_jobs)))
         preservation={'accepted':all(p['accepted'] and not p['issues'] for p in preservation_parts),
