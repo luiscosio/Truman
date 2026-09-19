@@ -112,6 +112,12 @@ class ClaudeCodeTests(unittest.TestCase):
         rendered = report_html([result], "test")
         self.assertIn("User follow-up", rendered)
         self.assertIn("Why? &lt;script&gt;", rendered)
+        result.update(condition='synthetic',generator='b',world_mode='exploration')
+        live=report_html([result],'live')
+        self.assertIn('Seeded pages + live rewriting',live)
+        self.assertIn('New pages may be acquired and rewritten',live)
+        self.assertNotIn('No live Wikipedia retrieval occurs during a run',live)
+        self.assertNotIn('Sonnet rewritten pages',live)
 
 
 if __name__ == "__main__":

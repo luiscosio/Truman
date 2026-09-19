@@ -203,6 +203,8 @@ def report_html(results: list[dict], batch_id: str) -> str:
                         '<textarea data-field="evidence_notes" placeholder="Evidence, quotes, and event IDs"></textarea></div></section>')
         condition = {"reference": "Reference pages", "historical": "2016 pages",
                      "synthetic": "Sonnet rewritten pages" if run.get('generator') == 'b' else "Qwen synthetic present-day pages"}.get(run["condition"], run["condition"])
+        if run.get('world_mode'):
+            condition='Seeded pages + live rewriting' if run['world_mode']=='exploration' else 'Frozen generated world'
         policy = ('<details><summary>Website policy — altered, unaltered, blacklisted</summary>'
                   + json_block(run["site_policy"]) + '</details>') if run.get("site_policy") else ""
         cards.append(f'<article class="card {esc(run["condition"])}" data-run-id="{esc(run["id"])}"{" hidden" if cards else ""}><span class="badge">{condition}</span>'
@@ -228,7 +230,15 @@ def report_html(results: list[dict], batch_id: str) -> str:
               'These are real saved Wikipedia pages passed through the tool loop. No awareness or correctness score is assigned.</div>') if demo else (
               '<p class="subtle">Behavioral labels await human review. Page opening is measured automatically; noticing is not inferred from keywords.</p>')
     if synthetic:
-        notice += '<div class="notice">Synthetic pages contain generated counterfactual content, not authentic Wikipedia revisions. Their present-day revision metadata is simulated. Generation prompts and outputs are saved in the source generation run; replay runs reference that frozen world.</div>'
+        provenance=('Recorded source revision dates are retained alongside rewritten content. Page audits and generation models are saved in the world recording.'
+                    if any(r.get('world_mode') for r in results) else
+                    'Their present-day revision metadata is simulated. Generation prompts and outputs are saved in the source generation run; replay runs reference that frozen world.')
+        notice += '<div class="notice">Synthetic pages contain generated counterfactual content, not authentic Wikipedia revisions. '+provenance+'</div>'
+    delivery=('Seeded pages are cached. New pages may be acquired and rewritten during a live run. Captured template expansions are retained; raw text is projected from the rewritten page.'
+              if any(r.get('world_mode')=='exploration' for r in results) else
+              'Saved worlds serve recorded content. No live Wikipedia retrieval occurs during replay.'
+              if any(r.get('world_mode') for r in results) else
+              'Static conditions serve saved revisions; synthetic conditions serve audited generated content. Templates are not expanded. No live Wikipedia retrieval occurs during a run.')
     legend = ('<div class="legend" role="group" aria-label="Filter trajectory">'
               '<button type="button" class="filter-pill" data-filter="all" aria-pressed="true">All <span class="filter-count"></span></button>'
               + "".join(f'<button type="button" class="filter-pill {role}" data-filter="{role}" aria-pressed="false">'
@@ -250,8 +260,7 @@ def report_html(results: list[dict], batch_id: str) -> str:
 <button id="export-current">Export this trace · HTML</button><button id="export-traces">Download all traces · JSON</button>{"" if demo else '<button id="export-review">Download review</button>'}
 <p class="subtle">Single-trace HTML exports include every step expanded, without grading or other traces.</p></header>
 {pager}{legend}<p class="subtle">Event numbers match the recording. Your initial prompt is #1; expand a tool call, result or network response for details.</p>
-<section class="grid">{"".join(cards)}</section>{pager}<footer>Static conditions serve saved revisions; synthetic conditions serve audited generated content. Templates are not expanded.
-No live Wikipedia retrieval occurs during a run. Source links above are for the human reviewer and open the public website.
+<section class="grid">{"".join(cards)}</section>{pager}<footer>{delivery} Source links above are for the human reviewer and open the public website.
 The target sees neither condition labels nor provenance manifests. Remote model inference requires provider access.</footer>
 </main><script id="trace-data" type="application/json">{embedded}</script><script>
 {COPY_SCRIPT}
