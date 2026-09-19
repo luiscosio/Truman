@@ -279,13 +279,9 @@ def rewrite(document,scenario,facts,title,store,revision_at):
     all_blocks={n['block'] for n in nodes}
     large_article=len(nodes)>2000
     plan_schema=(obj({'summary':S,'changes':arr(obj({'reason':S,'facts':arr(S)}))}) if large_article else copy.deepcopy(PLAN))
-    if not large_article:
-        plan_schema['properties']['changes']['items']['properties']['blocks']['items']={'type':'integer','enum':sorted(all_blocks)}
     review_schema=copy.deepcopy(REVIEW)
     review_schema['properties']['claims']['items']['properties']['key']={'type':'string','enum':sorted(context['facts_at_revision_date']) or ['__no_current_fact__']}
     review_schema['properties']['claims']['items']['properties']['value']={'type':'string','enum':sorted(set(context['facts_at_revision_date'].values())) or ['__no_current_fact__']}
-    for field in ('issues','claims'):
-        review_schema['properties'][field]['items']['properties']['blocks']['items']={'type':'integer','enum':sorted(all_blocks)}
     plan=ask(store,scenario,'planner','page-plan',COMMON+
         'Inspect the ENTIRE article and plan all necessary changes before editing. Node blocks keep related inline fields together. ' +
         ('For this large article, return a concise conceptual plan with at most 12 change categories and relevant fact keys. '
@@ -322,9 +318,8 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                 if owner.getparent() is not None and owner.tag in ('p','tr','li','figure','figcaption','h1','h2','h3','h4','meta') and block_scopes[block]<=allowed_blocks:
                     removable.append(block)
             schema=copy.deepcopy(PATCH)
-            schema['properties']['edits']['items']['properties']['id']={'type':'integer','enum':sorted(allowed)}
-            if removable:schema['properties']['remove_blocks']['items']={'type':'integer','enum':removable}
-            else:schema['properties']['remove_blocks']['maxItems']=0
+            # Keep the provider grammar reusable across batches. IDs are data
+            # and are validated locally before any edit can be applied.
             error=''
             for retry in range(2):
                 try:
@@ -341,13 +336,13 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                         'Use remove_blocks to remove an entire paragraph, table row, list item, heading, figure or meta tag '
                         'whose subject did not occur or does not belong in the world. Do not leave an ineligible entity in a membership table '
                         'or blank out individual cells when the whole row must go. Retain unrelated facts and historical events. '
-                        'Do not also edit fields inside a block you remove. Only remove block IDs present in this batch. '
+                        'Do not also edit fields inside a block you remove. Only remove IDs listed in removable_blocks. '
                         'Do not invent link targets: use a target already present in the original document, a declared world title with a nonempty source_title, or unlink it. '
                         'When removing a false supporting citation, remove its associated label as well as its URL. '
                         'Keep inline whitespace and sentence boundaries. Fix only issues visible in this batch; other batches handle other blocks. '
                         'Preserve prior correct edits. Return empty edits when no relevant change is needed. '
                         'You cannot add shared facts or change the world specification.',
-                        {**context,'article_plan':plan,'nodes':batch,'rendered_blocks':rendered,
+                        {**context,'article_plan':plan,'nodes':batch,'rendered_blocks':rendered,'removable_blocks':removable,
                          'feedback':local_feedback,'patch_error':error},schema)
                 except OutputTruncated:
                     groups=list(dict.fromkeys(n['block'] for n in batch))
@@ -419,12 +414,13 @@ def rewrite(document,scenario,facts,title,store,revision_at):
         # Acceptance is a deterministic consequence of a completed audit with
         # no findings, not a second model output that can contradict its list.
         review['accepted']=not review['issues']
+        if any(type(b) is not int or b not in all_blocks for field in ('issues','claims') for item in review[field] for b in item['blocks']):
+            raise Rejected('Review names unknown blocks')
         originals=review_original_changes(packet,final)
         preservation_jobs=list(preservation_batches(originals,visible(nodes),original_readable,readable_document(nodes)))
         def check_preservation(item):
             index,data=item
             local_schema=obj({'issues':copy.deepcopy(review_schema['properties']['issues'])})
-            local_schema['properties']['issues']['items']['properties']['blocks']['items']={'type':'integer','enum':sorted({n['block'] for n in data['original_changed_fields']})}
             result=ask(store,scenario,'preservation_reviewer',f'preservation-review-{repair}-{index}',COMMON+
             'Check ONLY preservation of unrelated source facts across these edits. Original fields are the BEFORE version; '
             'they intentionally contain claims that conflict with the alternate world. Never report an original claim as '
@@ -437,6 +433,9 @@ def rewrite(document,scenario,facts,title,store,revision_at):
             'List only concrete remaining problems, referring to valid block IDs. '
             'Return issues=[] only when no concrete remaining preservation defect was found.',
             {**context,**data},local_schema)
+            local_blocks={n['block'] for n in data['original_changed_fields']}
+            if any(type(b) is not int or b not in local_blocks for issue in result['issues'] for b in issue['blocks']):
+                raise Rejected('Preservation review names unknown blocks')
             return {**result,'accepted':not result['issues']}
         with ThreadPoolExecutor(max_workers=workers) as pool:
             preservation_parts=list(pool.map(check_preservation,enumerate(preservation_jobs)))

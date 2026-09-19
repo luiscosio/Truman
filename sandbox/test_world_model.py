@@ -111,18 +111,20 @@ class WorldModelTests(unittest.TestCase):
 
     def test_large_article_plan_uses_concepts_then_checks_all_blocks(self):
         document=('<div class="mw-parser-output">'+''.join('<p>Unrelated fact '+str(i)+'.</p>' for i in range(2001))+'</div>').encode()
-        patched=[]
+        patched=[];patch_schemas=[]
         def model(store,scenario,role,stage,system,data,schema):
             if stage=='page-plan':
                 self.assertNotIn('blocks',schema['properties']['changes']['items']['properties'])
                 return {'summary':'No changes identified','changes':[]}
             if stage.startswith('patch'):
-                patched.extend(n['id'] for n in data['nodes']);return {'edits':[]}
+                patched.extend(n['id'] for n in data['nodes']);patch_schemas.append(json.dumps(schema,sort_keys=True));return {'edits':[]}
             return {'accepted':True,'issues':[],'claims':[]}
         with patch('sandbox.demand_rewrite.ask',side_effect=model):
             rewrite(document,SCENARIO,normalize(SCENARIO)['world_facts'],'Topic',Store(self.root/'large'),'2026-01-01')
         self.assertEqual(len(patched),2001)
         self.assertEqual(len(set(patched)),2001)
+        self.assertGreater(len(patch_schemas),1)
+        self.assertEqual(len(set(patch_schemas)),1)
 
     def test_truncated_patch_splits_only_between_blocks(self):
         from sandbox.rewrite_model import OutputTruncated
