@@ -1,0 +1,27 @@
+{
+  "run_id": "mac-manual-seeds-agent-20260919-v6",
+  "original_run_seal_unchanged": "9a4ecbfb6ef1c07c00e246bf3b187070039bd29b6548e7bcbddf59b4115a35b6",
+  "output_directory": "reports/monarchy-trajectory-video-v2",
+  "duration_seconds": 263.5,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "fps": 24,
+  "audio_tracks": 0,
+  "scenes": 14,
+  "saved_page_screenshots": 4,
+  "full_final_response_cards": 4,
+  "full_final_response_word_sequence_verified": true,
+  "checks": [
+    "40 core/exporter/viewer tests passed",
+    "MP4 fully decoded without errors",
+    "Native in-app browser playback and chapter seeking verified",
+    "Generic frames-only export of v4 retains HTTP 409 and 404 requests"
+  ],
+  "files": {
+    "trajectory.mp4": "82d53bf22c6f525ea09915a22edc8744461b9cab1ed7b5de73291492b6185585",
+    "trajectory.webm": "f31f1ccea8b200e0a5d4a20f15b38b55bee8843d9800284622c796afb483b3c2",
+    "final-response.md": "f01438ef602589ed07927c0196f2a8a07d2068ee419a2a9a8c4c77b7b7de4127"
+  }
+}

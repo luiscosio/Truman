@@ -192,6 +192,11 @@ If Python on Windows cannot validate the public Wikipedia certificate but the sy
 
 ## References
 
+To turn a recorded run into a captioned video with saved-page screenshots, grouped
+agent actions and either brief animated paraphrases or a full transcript, see the
+[trajectory video exporter](tools/trace-video/README.md). It runs locally without
+calling a rewriting model or fetching live pages.
+
 For configurable generator A (local Qwen) and generator B (Claude Sonnet rewriting captured originals), see [REWRITE.md](REWRITE.md). It includes commands, audit records, verification results and current fidelity limits.
 
 For persistent worlds that rewrite pages only when requested, see [ON_DEMAND.md](ON_DEMAND.md). It covers shared facts, immutable page caching, full audit records, growing exploration and sealed replay across agents.

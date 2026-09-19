@@ -2,6 +2,7 @@ import argparse
 import functools
 import html
 import json
+import re
 import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -21,10 +22,15 @@ def positive(value):
 
 
 class ReportHandler(SimpleHTTPRequestHandler):
+    # Reports may include a local video player and its exported evidence sidecars.
+    extensions = {'.html', '.mp4', '.webm', '.png', '.jpg', '.jpeg', '.json', '.md', '.srt'}
+
     def do_GET(self):
         if urlsplit(self.path).path == "/":
             files = sorted(Path(self.directory).glob("*.html"), reverse=True)
             items = "".join(f'<p><a href="/{html.escape(p.name)}">{html.escape(p.stem)}</a></p>' for p in files)
+            for player in sorted(Path(self.directory).glob('*/index.html'), reverse=True):
+                items += f'<p><a href="/{html.escape(player.parent.name)}/index.html">{html.escape(player.parent.name)} · video</a></p>'
             content = f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Truman</title><style>{STYLE}</style></head><body><main><header><div class="eyebrow">TRUMAN / WIKIPEDIA LAB</div>
 <h1>Does the agent notice?</h1><p class="subtle">Compare the same task against present-day and 2016 Wikipedia pages.</p></header>
@@ -36,13 +42,59 @@ class ReportHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(content)
             return
-        path = Path(self.translate_path(self.path)).resolve()
-        if not path.is_relative_to(Path(self.directory).resolve()) or path.suffix != ".html" or not path.is_file():
-            self.send_error(404)
-            return
         super().do_GET()
 
+    def send_head(self):
+        self.remaining = None
+        path = Path(self.translate_path(self.path)).resolve()
+        if not path.is_relative_to(Path(self.directory).resolve()) or path.suffix.lower() not in self.extensions or not path.is_file():
+            self.send_error(404)
+            return None
+        header = self.headers.get('Range')
+        if header and path.suffix.lower() in {'.mp4', '.webm'}:
+            size = path.stat().st_size
+            match = re.fullmatch(r'bytes=(\d*)-(\d*)', header.strip())
+            start, end = 0, size-1
+            valid = bool(match and any(match.groups()) and size)
+            if valid:
+                first, last = match.groups()
+                if first:
+                    start = int(first)
+                    end = min(int(last), size-1) if last else size-1
+                else:
+                    valid = int(last)>0
+                    start = max(0, size-int(last))
+                valid = valid and start<=end and start<size
+            if not valid:
+                self.send_response(416)
+                self.send_header('Content-Range', f'bytes */{size}')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return None
+            stream = path.open('rb')
+            stream.seek(start)
+            self.remaining = end-start+1
+            self.send_response(206)
+            self.send_header('Content-Type', self.guess_type(str(path)))
+            self.send_header('Content-Range', f'bytes {start}-{end}/{size}')
+            self.send_header('Content-Length', str(self.remaining))
+            self.send_header('Last-Modified', self.date_time_string(path.stat().st_mtime))
+            self.end_headers()
+            return stream
+        return super().send_head()
+
+    def copyfile(self, source, outputfile):
+        if self.remaining is None:
+            return super().copyfile(source, outputfile)
+        while self.remaining:
+            chunk=source.read(min(65536,self.remaining))
+            if not chunk:break
+            outputfile.write(chunk)
+            self.remaining-=len(chunk)
+
     def end_headers(self):
+        if Path(urlsplit(self.path).path).suffix.lower() in {'.mp4','.webm'}:
+            self.send_header('Accept-Ranges','bytes')
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
