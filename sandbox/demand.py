@@ -58,6 +58,28 @@ CREATE TABLE receipts (id TEXT PRIMARY KEY, value TEXT);''')
     return root
 
 
+def fork_world(source,destination,scenario=None,renderer=None):
+    """Start a growing world from verified seeds, retaining every source audit."""
+    import shutil
+    source=Path(source);destination=Path(destination);parent=verify(source)
+    previous=json.loads((source/'world.json').read_bytes())
+    scenario=normalize(scenario or previous['scenario'])
+    operational={'id','generators','models','on_demand','source_titles'}
+    if {k:v for k,v in scenario.items() if k not in operational}!={k:v for k,v in previous['scenario'].items() if k not in operational}:
+        raise ValueError('Seed world facts or temporal scope differ; regenerate instead')
+    create(destination,scenario,renderer or previous['renderer_image'])
+    reader=sqlite3.connect((source/'world.sqlite').resolve().as_uri()+'?mode=ro',uri=True)
+    writer=sqlite3.connect(destination/'world.sqlite')
+    try:reader.backup(writer)
+    finally:reader.close();writer.close()
+    for directory in ('attempts','blobs'):
+        shutil.copytree(source/directory,destination/directory,dirs_exist_ok=True)
+    durable(destination/'seed-parent.json',encoded({'source':str(source.resolve()),'seal':parent,
+        'scenario_sha256':sha(encoded(previous['scenario'])),'note':'Seed bytes retain their recorded generation models; new requests use the new operational settings.'}))
+    if verify(source)!=parent:raise ValueError('Seed world changed during fork')
+    return destination
+
+
 class WorldService:
     def __init__(self,root,source_factory=WikipediaSource,writer=rewrite):
         self.root=Path(root);self.config=json.loads((self.root/'world.json').read_bytes())
@@ -235,8 +257,13 @@ class WorldService:
 
     def history(self,title,limit):
         key=self.resolve(title)
-        records=self.cached_operation('history:'+key+':'+str(limit),lambda source:source.history(key,limit))
+        records=self.history_metadata(key,limit)
         return [self.ensure(key,r['revid']) for r in records]
+
+    def history_metadata(self,title,limit):
+        key=self.resolve(title)
+        records=self.cached_operation('history:'+key+':'+str(limit),lambda source:source.history(key,limit))
+        return [{**r,'comment':'','user':''} if self.scenario.get('rewrite_pipeline')=='world-v2' else dict(r) for r in records]
 
     def revision(self,revision):
         row=self.db.execute('SELECT value FROM versions WHERE revision=?',(revision,)).fetchone()
@@ -306,10 +333,15 @@ class WorldService:
 def main():
     parser=argparse.ArgumentParser(description=__doc__);sub=parser.add_subparsers(dest='action',required=True)
     new=sub.add_parser('create');new.add_argument('--world',type=Path,required=True);new.add_argument('--scenario',type=Path,required=True)
+    fork=sub.add_parser('fork');fork.add_argument('--from-world',type=Path,required=True);fork.add_argument('--world',type=Path,required=True)
+    fork.add_argument('--scenario',type=Path);fork.add_argument('--renderer',help='Pinned renderer image for a host-only seed artifact')
     request=sub.add_parser('request');request.add_argument('--world',type=Path,required=True);request.add_argument('--path',required=True)
     freeze=sub.add_parser('freeze');freeze.add_argument('--world',type=Path,required=True);freeze.add_argument('--output',type=Path,required=True)
     serve=sub.add_parser('serve');serve.add_argument('--world',type=Path,required=True);serve.add_argument('--port',type=int,default=8767)
     args=parser.parse_args()
+    if args.action=='fork':
+        scenario=json.loads(args.scenario.read_bytes()) if args.scenario else None
+        print(fork_world(args.from_world,args.world,scenario,args.renderer));return
     if args.action=='create':
         import subprocess
         renderer=subprocess.check_output(['docker','image','inspect','truman-network-world:local','--format','{{.Id}}'],text=True).strip()

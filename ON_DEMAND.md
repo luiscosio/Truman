@@ -129,7 +129,7 @@ model IDs explicit for repeatability. For example:
  "models":{"reviewer":{"model":"claude-opus-5","effort":"high"}}}
 ```
 
-Complete-document planning is bounded to 750 KB of structured node data. Semantic
+Complete-document planning is bounded to 1.5 MB of compact structured node data. Semantic
 rewrite batches are bounded to 48 KB, with at most three patch/review passes. These
 are request-size bounds, not a dollar spending cap. Model/schema/network failures
 remain recorded and never publish a partial page. Images are assessed through their
@@ -137,6 +137,16 @@ captions/attributes, not pixel-level vision; misleading pictures can still escap
 review. External citations, original revision dates, capture-time templates, unsupported
 Wikipedia APIs and uncaptured pages remain fidelity limitations. A successful review
 is not proof of global consistency or undetectability.
+
+The final-content review sees the complete final page in normal sentence order,
+with attributes attached to their semantic blocks. A separate preservation review
+receives every changed or removed original field and the corresponding final blocks;
+unchanged fields need not be duplicated. Cross-page review retains every textual
+and attribute field, grouped by semantic block, but omits patch-address IDs and
+interns repeated long fields without dropping their positions.
+Large cross-page comparisons split between blocks into bounded pairs, covering
+every cross-document block combination. Up to four pairs run concurrently; this
+avoids oversized prompts but can increase model calls on large biographies.
 
 Independent batches run concurrently (default four; set `on_demand.model_concurrency`
 to a value from one to four). Each reads the same document state and receives only
@@ -208,3 +218,52 @@ there, outside Dropbox.
 The captured-page test defaults to `--max-tokens 32768` to leave room for reasoning and structured output on long articles. Smaller fixture comparisons keep 16384. Requests above 16384 output tokens allow up to 600 seconds; smaller requests allow 240. A truncated response is recorded as a failure, never accepted as a partial plan.
 
 New `/wiki/` link targets must already occur in the captured document or be declared world page identities with a source title. Removing a link converts it to plain text; absent attributes are omitted from review inputs. Semantic entities without their own article do not create page routes or empty-title rewrite rules.
+
+### Seeded worlds with live rewriting
+
+Fork a sealed world into a new growing world to keep accepted seed pages and allow
+generation when the agent requests something new. The fork preserves seed bytes,
+source audits and the parent seal. It only permits operational changes (model roles,
+generation budgets and labels); changing world facts or dates requires regeneration.
+
+```sh
+python -m sandbox.demand fork --from-world data/worlds/reviewed-seeds \
+  --world data/live-worlds/seeded-live --scenario data/compiled-fast-world.json
+python -m sandbox.demand_prepare --world data/live-worlds/seeded-live \
+  --from-run runs/previous-agent-run --report reports/request-coverage.json
+python -m sandbox.run --world data/live-worlds/seeded-live --network-mode managed \
+  --network-profile data/managed-profile-mac-v1 --model 'claude-opus-5[1m]' \
+  --effort high --seconds 600 --max-turns 20
+```
+
+`--from-run` verifies the prior recording and prepares its exact request paths,
+including aliases, API forms and history queries. Multiple paths may refer to one
+article. Metadata-only history queries acquire revision metadata without rewriting
+historical article bodies; later requests for those bodies still need generation.
+
+For a fast writer, set the following role overrides in a copy of the compiled
+scenario while retaining the fixed world specification:
+
+```json
+{"models":{
+  "planner":{"model":"claude-sonnet-5","effort":"low","max_tokens":8192},
+  "writer":{"model":"claude-haiku-4-5-20251001","max_tokens":8192},
+  "reviewer":{"model":"claude-sonnet-5","effort":"high","max_tokens":32768}
+}}
+```
+
+Haiku uses structured output without adaptive thinking or effort (which it does not
+support). Invalid Haiku patches and review-requested repairs escalate to the
+configured reviewer model. Seed pages retain their original recorded model; only
+new generation uses these settings. Full-article planning and review remain on
+Sonnet because Haiku's 200K context is too small for some captured biographies.
+Unsupported proposed link destinations are removed rather than invented; the final
+content and preservation reviews must still accept the resulting page. Low-effort
+review was unreliable in the preparation trial, so this example keeps high effort
+for review and repairs while using Haiku for first-pass block edits.
+See [Haiku specifications](https://platform.claude.com/docs/en/models/haiku-4-5/overview).
+
+Fast block calls do not guarantee fast first-page responses: acquisition, all block
+edits, review and any repairs must finish before publication. Accepted pages are
+cached. A live run can acquire different coverage on each repetition; freeze its
+finished world before making matched agent comparisons.

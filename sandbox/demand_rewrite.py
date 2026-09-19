@@ -76,8 +76,69 @@ def document_packet(nodes):
     # Preserve every field while avoiding repeated JSON property names in large articles.
     fields=['id','block','tag','field','value']
     compact={'fields':fields,'nodes':[[n[k] for k in fields] for n in values]}
-    if len(encoded(compact))>750000:raise Rejected('Complete article exceeds planning context budget')
+    if len(encoded(compact))>1500000:raise Rejected('Complete article exceeds planning context budget')
     return compact
+
+
+def review_original_changes(original,final):
+    """Lossless original side of a diff; unchanged final fields are not repeated."""
+    def unpack(packet):
+        return packet if isinstance(packet,list) else [dict(zip(packet['fields'],row)) for row in packet['nodes']]
+    before=unpack(original);after={n['id']:n for n in unpack(final)}
+    return [n for n in before if after.get(n['id'])!=n]
+
+
+def peer_document(document):
+    """Readable full-page text and attributes; cross-page review needs no edit IDs."""
+    tree=html.fromstring(document,parser=html.HTMLParser(encoding='utf-8'))
+    nodes=surfaces(tree);values=visible(nodes)
+    # Keep every reviewed field, grouped by its semantic block. Field names
+    # remain explicit; only patch-address IDs and repeated tag names are omitted.
+    groups={}
+    for n in values:groups.setdefault(n['block'],[]).append([n['field'],n['value']])
+    return {'format':'Each array is one semantic block, with [field, value] entries in document order.',
+            'blocks':list(groups.values())}
+
+
+def readable_document(nodes):
+    """Present normal sentence order, with all non-text fields beside the block."""
+    values=visible(nodes);groups={};owners={n['block']:n['block_node'] for n in nodes}
+    for n in values:groups.setdefault(n['block'],[]).append(n)
+    result=[]
+    for block,fields in groups.items():
+        owner=owners[block]
+        if owner.tag in ('p','tr','li','figure','figcaption','h1','h2','h3','h4','title','meta'):
+            readable=copy.deepcopy(owner)
+            for child in list(readable.xpath('.//script|.//style|.//svg|.//noscript')):child.drop_tree()
+            text=readable.text_content()
+            if owner.tail and owner.tail.strip():text+='\n'+owner.tail
+        else:text=' '.join(n['value'] for n in fields if n['field'] in ('text','tail'))
+        result.append({'block':block,'text':text,'attributes':[
+            [n['tag'],n['field'],n['value']] for n in fields if n['field'] not in ('text','tail')]})
+    return result
+
+
+def shared_peer_fields(candidate,other):
+    """Intern repeated long fields across both pages without dropping context."""
+    from collections import Counter
+    counts=Counter(encoded(entry) for page in (candidate,other) for block in page['blocks'] for entry in block)
+    repeated={value:index for index,value in enumerate(value for value,count in counts.items() if count>1 and len(value)>60)}
+    def compact(page):
+        return {**page,'blocks':[[repeated.get(encoded(entry),entry) for entry in block] for block in page['blocks']]}
+    return compact(candidate),compact(other),[json.loads(value) for value in repeated]
+
+
+def peer_pairs(candidate,other,limit=1500000):
+    """Cover every cross-document block pair, subdividing oversized comparisons."""
+    if len(encoded(candidate))+len(encoded(other))<=limit:
+        yield candidate,other;return
+    split_candidate=len(encoded(candidate))>=len(encoded(other))
+    chosen=candidate if split_candidate else other
+    if len(chosen['blocks'])<2:raise Rejected('Single semantic block exceeds peer review budget')
+    middle=len(chosen['blocks'])//2
+    for blocks in (chosen['blocks'][:middle],chosen['blocks'][middle:]):
+        part={**chosen,'blocks':blocks}
+        yield from peer_pairs(part,other,limit) if split_candidate else peer_pairs(candidate,part,limit)
 
 
 def apply(nodes,edits,allowed,known_targets=None,apply_changes=True):
@@ -156,7 +217,7 @@ def rewrite(document,scenario,facts,title,store,revision_at):
     tree=html.fromstring(document,parser=html.HTMLParser(encoding='utf-8'))
     if not tree.xpath(CONTENT):raise Rejected('No captured article body')
     nodes=surfaces(tree);packet=document_packet(nodes)
-    if len(encoded(packet))>750000:raise Rejected('Complete article exceeds planning context budget')
+    if len(encoded(packet))>1500000:raise Rejected('Complete article exceeds planning context budget')
     context={'world_date':scenario['as_of'],'revision_date':revision_at,'article':title,
              'rules':scenario['facts'],'world_model':spec,'facts_at_world_date':facts,
              'previous_validation_feedback':scenario.get('_validation_feedback',''),
@@ -169,6 +230,7 @@ def rewrite(document,scenario,facts,title,store,revision_at):
         plan_schema['properties']['changes']['items']['properties']['blocks']['items']={'type':'integer','enum':sorted(all_blocks)}
     review_schema=copy.deepcopy(REVIEW)
     review_schema['properties']['claims']['items']['properties']['key']={'type':'string','enum':sorted(context['facts_at_revision_date']) or ['__no_current_fact__']}
+    review_schema['properties']['claims']['items']['properties']['value']={'type':'string','enum':sorted(set(context['facts_at_revision_date'].values())) or ['__no_current_fact__']}
     for field in ('issues','claims'):
         review_schema['properties'][field]['items']['properties']['blocks']['items']={'type':'integer','enum':sorted(all_blocks)}
     plan=ask(store,scenario,'planner','page-plan',COMMON+
@@ -206,7 +268,12 @@ def rewrite(document,scenario,facts,title,store,revision_at):
             error=''
             for retry in range(2):
                 try:
-                    patch=ask(store,scenario,'writer',f'patch-{repair}-{batch_index}-{retry}',COMMON+
+                    writing_scenario=scenario
+                    from sandbox.demand_world import settings
+                    if (repair or retry) and settings(scenario,'writer')['model'].startswith('claude-haiku-'):
+                        writing_scenario={**scenario,'models':{**scenario.get('models',{}),'writer':settings(scenario,'reviewer')}}
+                        store.event('writer_escalation',repair=repair,batch=str(batch_index),retry=retry,model=settings(writing_scenario,'writer')['model'])
+                    patch=ask(store,writing_scenario,'writer',f'patch-{repair}-{batch_index}-{retry}',COMMON+
                         'Apply the shared article plan to these coherent blocks. Return only changed node IDs with plain text replacements. '
                         'Use rendered_blocks to read normal sentence order; nodes are edit addresses, not a plain-text reading sequence. '
                         'Fields text/tail are visible text; href is a URL; title/alt/aria-label/content are attributes. '
@@ -231,6 +298,16 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                         subedits,_=patch_batch(subjob,depth+1);combined.extend(subedits)
                     return combined,allowed
                 try:
+                    # A requested new destination must exist in the routing
+                    # contract. Unlink unsupported destinations rather than
+                    # inventing pages or restarting the entire article.
+                    for edit in patch['edits']:
+                        i=edit['id']
+                        if type(i) is int and i in allowed and nodes[i]['field']=='href':
+                            try:apply(nodes,[edit],allowed,known_targets,apply_changes=False)
+                            except Rejected as exc:
+                                store.event('unsupported_link_removed',node=i,requested=edit['text'],reason=str(exc))
+                                edit['text']=''
                     apply(nodes,patch['edits'],allowed,known_targets,apply_changes=False)
                     return patch['edits'],allowed
                 except Rejected as exc:
@@ -244,15 +321,36 @@ def rewrite(document,scenario,facts,title,store,revision_at):
         final=document_packet(nodes)
         review=ask(store,scenario,'reviewer',f'page-review-{repair}',COMMON+
             'Independently audit the COMPLETE final document, including unchanged nodes and all link/attribute values. '
-            'Compare with original content and reject contradictions, unsupported new facts, missed consequences, '
-            'broken sentences, misleading citations/images, or changed unrelated history. Do not rely on the edit plan as evidence of correctness. '
+            'Reject contradictions with world rules, unsupported new facts, missed consequences, broken sentences, '
+            'and misleading citations/images. Only final content is supplied in this call; source preservation is checked separately. '
+            'Do not rely on the edit plan as evidence of correctness. '
+            'Do not reject ordinary maintenance categories or blank placeholders left after removal of impossible events; '
+            'report concrete factual or grammatical defects, not the mere presence of empty fields. '
+            'List only definite remaining defects. Do not list acceptable content, a concern you then dismiss, '
+            'or hypothetical problems not supported by the supplied text. A source revision earlier than the world date is normal. '
             'List concrete issues with the block IDs that need repair. Empty block list means a global issue. '
             'Extract explicit claims corresponding to known fact keys at the effective date, using their canonical values. '
             'Only use the listed fact keys; omit claims about unrelated preserved facts or date attributes without their own listed key. '
             'Historical claims outside the effective date must be assessed in context, not incorrectly treated as current claims. '
             'An accepted page must have no remaining issues.',
-            {**context,'original_document':packet,'final_document':final},review_schema)
-        issues=list(review['issues'])+identity_issues(nodes,spec)
+            {**context,'final_document':readable_document(nodes)},review_schema)
+        originals=review_original_changes(packet,final)
+        changed_blocks={n['block'] for n in originals}
+        preservation=ask(store,scenario,'preservation_reviewer',f'preservation-review-{repair}',COMMON+
+            'Check ONLY preservation of unrelated source facts across these edits. Original fields are the BEFORE version; '
+            'they intentionally contain claims that conflict with the alternate world. Never report an original claim as '
+            'retained unless it actually appears in final_fields. Missing final IDs were removed. '
+            'Allow changes or removal required by world rules, including invalid citations, images and impossible events. '
+            'Reject lost unrelated dates, facts, broken joins or invented replacements. Do not require the writer to '
+            'preserve a false event as a hypothetical future event. Unchanged fields elsewhere are identical to the source. '
+            'List only concrete remaining problems, referring to valid block IDs.',
+            {**context,'original_changed_fields':originals,
+             'final_fields':[n for n in visible(nodes) if n['block'] in changed_blocks]},
+            obj({'accepted':{'type':'boolean'},'issues':review_schema['properties']['issues']}))
+        store.event('preservation_review',repair=repair,review=preservation)
+        if not preservation['accepted'] and not preservation['issues']:
+            preservation['issues']=[{'blocks':[],'reason':'Preservation reviewer rejected without localized issues'}]
+        issues=list(review['issues'])+list(preservation['issues'])+identity_issues(nodes,spec)
         at_revision=context['facts_at_revision_date']
         for claim in review['claims']:
             if claim['key'] not in at_revision or claim['value']!=at_revision[claim['key']]:
@@ -280,21 +378,29 @@ def review_peers(document,title,revision_at,scenario,peers,store):
     Pairwise calls keep context bounded without silently dropping distant pages.
     The world's max_versions budget also bounds this quadratic review cost.
     """
-    candidate=document_packet(surfaces(html.fromstring(document,parser=html.HTMLParser(encoding='utf-8'))))
+    candidate=peer_document(document)
     for peer in peers:
         if peer['title']==title:continue
-        other=document_packet(surfaces(html.fromstring(peer['document'],parser=html.HTMLParser(encoding='utf-8'))))
-        if len(encoded(candidate))+len(encoded(other))>1500000:
-            raise Rejected('Cross-page review exceeds context budget')
-        result=ask(store,scenario,'reviewer','cross-page-'+peer['title'],COMMON+
+        other=peer_document(peer['document'])
+        pairs=list(peer_pairs(candidate,other))
+        def compare(item):
+            index,(left,right)=item
+            compared,other_part,shared=shared_peer_fields(left,right)
+            result=ask(store,scenario,'peer_reviewer','cross-page-'+peer['title']+'-'+str(index),COMMON+
             'Compare these two pages for incompatible claims about shared entities, relationships and events. '
             'Different detail or silence is not a contradiction. Respect each revision date and historical context. '
+            'Each reported contradiction must quote two explicit incompatible statements, one from each page. '
+            'Do not reject for empty placeholders, valid historical references, or a claim absent from a supplied section. '
             'Neither page may override the world specification. Return concrete contradictions if present. '
             'If repairing the candidate cannot resolve the issue without changing the committed page or the world rules, say so.',
             {'world_model':scenario['world_model'],'rules':scenario['facts'],
-             'candidate':{'title':title,'revision_date':revision_at,'document':candidate},
-             'committed':{'title':peer['title'],'revision_date':peer['revision_at'],'document':other}},
-            obj({'accepted':{'type':'boolean'},'issues':arr(S)}))
-        store.event('cross_page_review',candidate=title,peer=peer['title'],review=result)
-        if not result['accepted'] or result['issues']:
-            raise Rejected('Cross-page consistency rejected: '+json.dumps(result['issues']))
+             'committed':{'title':peer['title'],'revision_date':peer['revision_at'],'document':other_part},
+             'candidate':{'title':title,'revision_date':revision_at,'document':compared},
+             'shared_fields':shared,
+             'encoding':'An integer entry in either document is a zero-based index into shared_fields, replacing the same [field,value] pair. Expand references before comparing; all fields and block positions are retained.'},
+                obj({'accepted':{'type':'boolean'},'issues':arr(S)}))
+            store.event('cross_page_review',candidate=title,peer=peer['title'],part=index,parts=len(pairs),review=result)
+            if not result['accepted'] or result['issues']:
+                raise Rejected('Cross-page consistency rejected: '+json.dumps(result['issues']))
+        with ThreadPoolExecutor(max_workers=min(4,len(pairs))) as pool:
+            list(pool.map(compare,enumerate(pairs)))

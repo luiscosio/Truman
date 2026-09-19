@@ -8,7 +8,7 @@ ALIASES = {"a": "a", "generate": "a", "b": "b", "rewrite": "b"}
 def generation_settings(scenario, generator):
     settings = scenario.get('generators',{}).get(generator,scenario.get('generation',{}))
     if generator == 'b':
-        if settings.get('provider', 'anthropic') != 'anthropic' or not settings.get('model', 'claude-sonnet-5').startswith(('claude-sonnet-', 'claude-opus-', 'claude-fable-')):
+        if settings.get('provider', 'anthropic') != 'anthropic' or not settings.get('model', 'claude-sonnet-5').startswith(('claude-sonnet-', 'claude-opus-', 'claude-fable-', 'claude-haiku-')):
             raise ValueError('Generator B requires an Anthropic Claude rewrite model')
         if set(settings) & {'seed', 'temperature'}:
             raise ValueError('Claude rewrite settings use effort; seed and temperature are unsupported')

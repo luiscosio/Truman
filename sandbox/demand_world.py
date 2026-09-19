@@ -31,7 +31,8 @@ REVIEW=obj({'accepted':{'type':'boolean'},'issues':arr(S)})
 
 
 def settings(scenario,role):
-    configured={**generation_settings(scenario,'b'),**scenario.get('models',{}).get(role,{})}
+    base=settings(scenario,'reviewer') if role in ('peer_reviewer','preservation_reviewer') else generation_settings(scenario,'b')
+    configured={**base,**scenario.get('models',{}).get(role,{})}
     generation_settings({'generators':{'b':configured}},'b')
     return {'model':'claude-sonnet-5','effort':'high','max_tokens':16384,**configured}
 
@@ -39,10 +40,15 @@ def settings(scenario,role):
 def ask(store,scenario,role,stage,system,data,schema):
     config=settings(scenario,role)
     store.event('world_model_stage',role=role,stage=stage,model=config['model'],effort=config['effort'])
-    return call_claude({'model':config['model'],'max_tokens':config['max_tokens'],
-        'system':system,'thinking':{'type':'adaptive'},
-        'output_config':{'effort':config['effort'],'format':{'type':'json_schema','schema':schema}},
-        'messages':[{'role':'user','content':json.dumps(data,ensure_ascii=False)}]},store,role,stage)
+    payload={'model':config['model'],'max_tokens':config['max_tokens'],
+        'system':system,'output_config':{'format':{'type':'json_schema','schema':schema}},
+        'messages':[{'role':'user','content':json.dumps(data,ensure_ascii=False)}]}
+    # Haiku 4.5 has neither adaptive thinking nor effort. Use its fast,
+    # non-thinking structured-output mode; stronger roles can review its work.
+    if not config['model'].startswith('claude-haiku-'):
+        payload['thinking']={'type':'adaptive'}
+        payload['output_config']['effort']=config['effort']
+    return call_claude(payload,store,role,stage)
 
 
 def validate(spec):
@@ -99,7 +105,7 @@ def normalize(scenario):
     result['display_titles']={title_key(e['source_title']):title_key(e['title']) for e in spec['entities'] if e['exists'] and e['source_title']}
     result['absent_titles']=sorted({title_key(n) for e in spec['entities'] if not e['exists'] and e['source_title']
                                    for n in [e['source_title'],e['title'],*e['aliases']]})
-    for role in ('planner','writer','reviewer'):settings(result,role)
+    for role in ('planner','writer','reviewer','peer_reviewer','preservation_reviewer'):settings(result,role)
     return result
 
 

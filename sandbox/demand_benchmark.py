@@ -75,7 +75,7 @@ def usage(root):
                 inp=u.get('input_tokens',0);out=u.get('output_tokens',0)
                 counts['input_tokens']+=inp;counts['output_tokens']+=out
                 # Standard uncached pricing recorded on 2026-09-18; estimates only.
-                rate=(2,10) if 'sonnet' in e['model'] else (5,25) if 'opus' in e['model'] else (10,50)
+                rate=(1,5) if 'haiku' in e['model'] else (2,10) if 'sonnet' in e['model'] else (5,25) if 'opus' in e['model'] else (10,50)
                 counts['estimated_usd']+=(inp*rate[0]+out*rate[1])/1e6
     return counts
 

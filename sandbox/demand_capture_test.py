@@ -44,7 +44,8 @@ def main():
     print('Compiled captured-world scenario',flush=True);results=[]
     for model in a.models:
         s=copy.deepcopy(compiled);s['generators']['b']['model']=model
-        root=a.output/model;create(root,s,'recorded-original-capture');world=WorldService(root,Source);start=time.monotonic()
+        renderer=json.loads((a.source_world/'world.json').read_bytes())['renderer_image']
+        root=a.output/model;create(root,s,renderer);world=WorldService(root,Source);start=time.monotonic()
         try:
             report=prepare(world,list(captures),max_pages=len(captures),depth=0)
             digest=world.freeze(a.output/(model+'-frozen'))

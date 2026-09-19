@@ -40,8 +40,13 @@ def call_claude(payload, store, article, attempt):
     global _blocked_reason
     if _blocked_reason:
         raise ProviderBlocked(_blocked_reason)
-    if not payload['model'].startswith(('claude-sonnet-', 'claude-opus-', 'claude-fable-')):
+    if not payload['model'].startswith(('claude-sonnet-', 'claude-opus-', 'claude-fable-', 'claude-haiku-')):
         raise ValueError('Unsupported Claude rewrite model')
+    if payload['model'].startswith('claude-haiku-'):
+        # Legacy generators also build adaptive requests. Normalize before
+        # recording so the audit contains exactly what this model receives.
+        payload={**payload,'output_config':{k:v for k,v in payload.get('output_config',{}).items() if k!='effort'}}
+        if payload.get('thinking',{}).get('type')=='adaptive':payload.pop('thinking')
     store.event('generation_request', article=article, attempt=attempt, provider='anthropic',
                 request_blob=store.blob(encoded(payload)))
     request = Request('https://api.anthropic.com/v1/messages', data=encoded(payload), headers={

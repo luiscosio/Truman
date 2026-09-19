@@ -170,6 +170,18 @@ class WorldModelTests(unittest.TestCase):
         self.assertIsInstance(packet,dict)
         self.assertEqual([dict(zip(packet['fields'],row)) for row in packet['nodes']],__import__('sandbox.demand_rewrite',fromlist=['visible']).visible(nodes))
 
+    def test_review_diff_retains_every_changed_or_removed_original_field(self):
+        from sandbox.demand_rewrite import review_original_changes
+        before=[{'id':0,'block':0,'field':'text','tag':'p','value':'Original'},
+                {'id':1,'block':1,'field':'text','tag':'p','value':'Unchanged'},
+                {'id':2,'block':2,'field':'href','tag':'a','value':'/wiki/Removed'}]
+        after=[{**before[0],'value':'Changed'},before[1]]
+        fields=list(before[0])
+        diff=review_original_changes({'fields':fields,'nodes':[[n[k] for k in fields] for n in before]},after)
+        self.assertEqual(diff,[before[0],before[2]])
+        reconstructed={n['id']:n for n in after};reconstructed.update({n['id']:n for n in diff})
+        self.assertEqual(list(reconstructed.values()),before)
+
     def test_cross_page_contradiction_blocks_publication(self):
         create(self.root/'world',SCENARIO,'test')
         world=WorldService(self.root/'world',Source,lambda d,s,f,*a:(d,f,[]));self.addCleanup(world.close)
@@ -184,6 +196,83 @@ class WorldModelTests(unittest.TestCase):
         s={**SCENARIO,'models':{'reviewer':{'model':'claude-opus-5','effort':'high'}}}
         self.assertEqual(settings(s,'reviewer')['model'],'claude-opus-5')
         with self.assertRaises(ValueError):settings({**s,'models':{'reviewer':{'model':'unknown'}}},'reviewer')
+
+    def test_haiku_writer_uses_structured_output_without_adaptive_thinking(self):
+        from sandbox.demand_world import ask,obj,S
+        scenario={**SCENARIO,'models':{'writer':{'model':'claude-haiku-4-5-20251001'}}}
+        with patch('sandbox.demand_world.call_claude',return_value={'answer':'ok'}) as provider:
+            ask(Store(self.root/'haiku'),scenario,'writer','test','system',{},obj({'answer':S}))
+        payload=provider.call_args.args[0]
+        self.assertNotIn('thinking',payload)
+        self.assertNotIn('effort',payload['output_config'])
+        self.assertEqual(payload['output_config']['format']['type'],'json_schema')
+
+    def test_invalid_haiku_patch_escalates_without_publishing_it(self):
+        scenario={**SCENARIO,'models':{'writer':{'model':'claude-haiku-4-5-20251001'},'reviewer':{'model':'claude-sonnet-5'}}}
+        models=[]
+        def model(store,s,role,stage,system,data,schema):
+            if stage=='page-plan':return {'summary':'check','changes':[{'blocks':sorted({n['block'] for n in data['document']}),'reason':'check','facts':[]}]}
+            if stage.startswith('patch'):
+                models.append(settings(s,'writer')['model'])
+                if models[-1].startswith('claude-haiku-'):return {'edits':[{'id':999999,'text':'invalid'}]}
+                return {'edits':[]}
+            return {'accepted':True,'issues':[],'claims':[]}
+        with patch('sandbox.demand_rewrite.ask',side_effect=model):
+            output,_,_=rewrite(b'<div class="mw-parser-output"><p>Unrelated history.</p></div>',scenario,normalize(scenario)['world_facts'],'Topic',Store(self.root/'escalate'),'2026-01-01')
+        self.assertEqual(models,['claude-haiku-4-5-20251001','claude-sonnet-5'])
+        self.assertIn(b'Unrelated history.',output)
+
+    def test_peer_packet_preserves_all_fields_without_patch_ids(self):
+        from sandbox.demand_rewrite import peer_document,visible,shared_peer_fields,readable_document
+        packet=peer_document(DOC)
+        expected=[[n['field'],n['value']] for n in visible(surfaces(html.fromstring(DOC))) ]
+        self.assertEqual([entry for block in packet['blocks'] for entry in block],expected)
+        long={'blocks':[[['href','https://en.wikipedia.org/wiki/A_very_long_repeated_article_identity_for_testing']]],'format':'test'}
+        first,second,shared=shared_peer_fields(long,long)
+        for compact in (first,second):
+            self.assertEqual([[shared[e] if isinstance(e,int) else e for e in b] for b in compact['blocks']],long['blocks'])
+        readable=readable_document(surfaces(html.fromstring(DOC)))
+        self.assertTrue(any('The Old Institute studies water.' in block['text'] for block in readable))
+
+    def test_large_peer_comparisons_cover_every_cross_page_block_pair(self):
+        from sandbox.demand_rewrite import peer_pairs
+        left={'blocks':[[['text','Left '+str(i)+' x'*30]] for i in range(6)]}
+        right={'blocks':[[['text','Right '+str(i)+' y'*30]] for i in range(4)]}
+        pairs=list(peer_pairs(left,right,limit=450))
+        observed={(a[0][1],b[0][1]) for l,r in pairs for a in l['blocks'] for b in r['blocks']}
+        expected={(a[0][1],b[0][1]) for a in left['blocks'] for b in right['blocks']}
+        self.assertEqual(observed,expected)
+        self.assertGreater(len(pairs),1)
+
+    def test_seed_fork_preserves_bytes_and_allows_new_requests(self):
+        from sandbox.demand import fork_world
+        create(self.root/'source',SCENARIO,'sha256:test')
+        source=WorldService(self.root/'source',Source,lambda d,s,f,*a:(d,f,[]))
+        with patch('sandbox.demand_rewrite.review_peers'):
+            original=source.ensure('First')
+        digest=source.freeze(self.root/'frozen');source.close()
+        scenario={**SCENARIO,'models':{'writer':{'model':'claude-haiku-4-5-20251001'}}}
+        fork_world(self.root/'frozen',self.root/'growing',scenario)
+        world=WorldService(self.root/'growing',Source,lambda d,s,f,*a:(d,f,[]));self.addCleanup(world.close)
+        self.assertFalse(world.readonly)
+        self.assertEqual(world.ensure('First'),original)
+        with patch('sandbox.demand_rewrite.review_peers'):
+            self.assertEqual(world.ensure('Second')['title'],'Second')
+        self.assertEqual(verify(self.root/'frozen'),digest)
+        with self.assertRaisesRegex(ValueError,'scope differ'):
+            fork_world(self.root/'frozen',self.root/'invalid',{**scenario,'as_of':'2027-01-01'})
+
+    def test_history_metadata_does_not_generate_historical_pages(self):
+        create(self.root/'world',SCENARIO,'test')
+        world=WorldService(self.root/'world',Source,lambda d,s,f,*a:(d,f,[]));self.addCleanup(world.close)
+        with patch('sandbox.demand_rewrite.review_peers'):world.ensure('First')
+        with patch.object(world,'history',side_effect=AssertionError('Unexpected historical generation')):
+            result=world.handle('/w/api.php?action=query&titles=First&prop=revisions&rvprop=ids|user|comment&rvlimit=3')
+        self.assertEqual(result['status'],200)
+        records=next(iter(json.loads(world.bytes(result['body']))['query']['pages'].values()))['revisions']
+        self.assertEqual([r['revid'] for r in records],[5,4,3])
+        self.assertTrue(all(r['user']==r['comment']=='' for r in records))
+        self.assertEqual(world.db.execute('SELECT count(*) FROM versions').fetchone()[0],1)
 
     def test_all_metadata_and_links_reach_reviewer_and_repairs_localize(self):
         store=Store(self.root/'audit');calls=[]
@@ -200,7 +289,7 @@ class WorldModelTests(unittest.TestCase):
         self.assertNotIn(b'Old',result);self.assertIn(b'Founded in 1980.',result)
         reviews=[d for stage,d in calls if stage.startswith('page-review')]
         self.assertEqual(len(reviews),2)
-        self.assertTrue(any(n['field']=='href' for n in reviews[0]['final_document']))
+        self.assertTrue(any(a[1]=='href' for n in reviews[0]['final_document'] for a in n['attributes']))
         self.assertEqual(facts,normalize(SCENARIO)['world_facts'])
         first=[d for stage,d in calls if stage.startswith('patch-0')][0]
         second=[d for stage,d in calls if stage.startswith('patch-1')][0]

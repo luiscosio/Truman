@@ -50,15 +50,29 @@ def prepare(world,seeds,max_pages=12,depth=1):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--world',type=Path,required=True)
-    p.add_argument('--pages',nargs='+',required=True);p.add_argument('--max-pages',type=int,default=12)
+    seeds=p.add_mutually_exclusive_group(required=True)
+    seeds.add_argument('--pages',nargs='+');seeds.add_argument('--from-run',type=Path,help='Prepare the exact recorded request paths, including API and history forms')
+    p.add_argument('--max-pages',type=int,default=12)
     p.add_argument('--depth',type=int,default=1);p.add_argument('--report',type=Path,required=True)
     p.add_argument('--freeze',type=Path);a=p.parse_args();world=WorldService(a.world)
     try:
-        report=prepare(world,a.pages,a.max_pages,a.depth);durable(a.report,encoded(report))
+        if a.from_run:
+            from sandbox.archive import verify
+            verify(a.from_run)
+            requests=[e['path'] for e in json.loads((a.from_run/'run.json').read_bytes())['network_requests']]
+            rows=[]
+            for path in requests:
+                result=world.handle(path)
+                rows.append({'path':path,'status':result['status'],'coverage':result['coverage']})
+                print(json.dumps(rows[-1]),flush=True)
+            report={'status':'ready' if all(r['status']==200 or r['coverage']=='world_missing' for r in rows) else 'incomplete',
+                    'source_run':str(a.from_run),'requests':rows}
+        else:report=prepare(world,a.pages,a.max_pages,a.depth)
+        durable(a.report,encoded(report))
         if a.freeze:
             if report['status']!='ready':raise ValueError('Declared preparation scope is incomplete; see report')
             print(world.freeze(a.freeze))
-        print(json.dumps({'status':report['status'],'pages':len(report['pages']),'unvisited':len(report['unvisited'])}))
+        print(json.dumps({'status':report['status'],'pages':len(report.get('pages',[])),'unvisited':len(report.get('unvisited',[]))}))
     finally:world.close()
 
 

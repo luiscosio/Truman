@@ -107,13 +107,15 @@ def respond(world,target):
                 if 'revisions' in props:
                     if any(k in q for k in ('rvstart','rvend','rvstartid','rvendid','rvdir','rvcontinue')):raise CoverageMiss('Revision filtering is not supported yet')
                     count=number('rvlimit',1,5)
-                    versions=[a] if count==1 else world.history(a['title'],count)
                     requested=param('rvprop','ids|timestamp').split('|')
                     if not set(requested)<={'ids','timestamp','user','comment','content','size','sha1','flags'}:raise CoverageMiss('Unsupported revision property')
+                    needs_content=bool(set(requested)&{'content','size','sha1'})
+                    versions=([a] if count==1 else world.history(a['title'],count)) if needs_content or count==1 else [
+                        {'record':r} for r in world.history_metadata(a['title'],count)]
                     records=[]
                     for version in versions:
                         if version.get('missing'):continue
-                        r=version['record'];rev={};text=world.bytes(version['text_blob']).decode()
+                        r=version['record'];rev={};text=world.bytes(version['text_blob']).decode() if needs_content else ''
                         for field in ('timestamp','user','comment'):
                             if field in requested:rev[field]=r.get(field,'')
                         if 'ids' in requested:rev.update(revid=r['revid'],parentid=r.get('parentid',0))
