@@ -66,6 +66,35 @@ class WorldModelTests(unittest.TestCase):
         self.assertFalse(any(a[1]=='image' for block in reviewed for a in block['attributes']))
         self.assertTrue(any(e['kind']=='unsupported_image_removed' for e in journal(store.root/'events.jsonl')))
 
+    def test_preservation_chunks_retain_each_changed_block_and_all_its_fields(self):
+        from sandbox.demand_rewrite import preservation_batches
+        before=[{'id':i,'block':i,'value':'original '+str(i)} for i in range(8)]
+        after=[{'id':i,'block':i,'value':'final '+str(i)} for i in range(9)]
+        readable=[{'block':i,'text':'Sentence '+str(i),'attributes':[]} for i in range(9)]
+        chunks=list(preservation_batches(before,after,readable,readable,limit=700))
+        self.assertGreater(len(chunks),1)
+        self.assertEqual([n for c in chunks for n in c['original_changed_fields']],before)
+        self.assertEqual([n for c in chunks for n in c['final_fields']],after[:8])
+        for c in chunks:
+            blocks={n['block'] for n in c['original_changed_fields']}
+            for name in ('final_fields','original_blocks','final_blocks'):
+                self.assertEqual({n['block'] for n in c[name]},blocks)
+        with self.assertRaisesRegex(Rejected,'Single preservation block'):
+            list(preservation_batches(before,after,readable,readable,limit=1))
+
+    def test_whole_row_removal_hides_descendants_from_subsequent_review(self):
+        from sandbox.demand_rewrite import remove_blocks,visible,readable_document
+        tree=html.fromstring('<div><table><tr><td><a href="/wiki/Impossible">Impossible event</a></td></tr><tr><td>Preserved event</td></tr></table><p>Unrelated date: 1980.</p></div>')
+        nodes=surfaces(tree);block=next(n['block'] for n in nodes if n['original']=='Impossible event')
+        with self.assertRaises(Rejected):remove_blocks(nodes,[block],set())
+        log=remove_blocks(nodes,[block],{block})
+        self.assertEqual(len(tree.xpath('.//tr')),1)
+        self.assertIn('Preserved event',tree.text_content())
+        self.assertIn('1980',tree.text_content())
+        self.assertFalse(any(n['block']==block for n in visible(nodes)))
+        self.assertNotIn('Impossible',json.dumps(readable_document(nodes)))
+        self.assertIn('Impossible event',log[0]['original'])
+
     def test_large_article_plan_uses_concepts_then_checks_all_blocks(self):
         document=('<div class="mw-parser-output">'+''.join('<p>Unrelated fact '+str(i)+'.</p>' for i in range(2001))+'</div>').encode()
         patched=[]

@@ -263,6 +263,15 @@ review was unreliable in the preparation trial, so this example keeps high effor
 for review and repairs while using Haiku for first-pass block edits.
 See [Haiku specifications](https://platform.claude.com/docs/en/models/haiku-4-5/overview).
 
+The editor can remove complete semantic units (paragraphs, list items, table rows,
+headings and figures), so nonexistent events need not leave misleading empty rows.
+Removals are constrained to complete units contained in the current batch and are
+included in the audit. Removed descendants are excluded from later reviews.
+Preservation checks use bounded before/after blocks with normal sentence context;
+every changed field is checked. Cross-page comparisons run with bounded concurrency
+and still must all pass before publication. Proposed replacement images are removed,
+never synthesized or assigned invented filenames.
+
 Fast block calls do not guarantee fast first-page responses: acquisition, all block
 edits, review and any repairs must finish before publication. Accepted pages are
 cached. A live run can acquire different coverage on each repetition; freeze its

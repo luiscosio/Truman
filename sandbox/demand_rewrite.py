@@ -12,7 +12,8 @@ from sandbox.rewrite_capture import CONTENT
 from sandbox.rewrite_model import OutputTruncated
 
 PLAN=obj({'summary':S,'changes':arr(obj({'blocks':arr({'type':'integer'}),'reason':S,'facts':arr(S)}))})
-PATCH=obj({'edits':arr(obj({'id':{'type':'integer'},'text':S}))})
+PATCH=obj({'edits':arr(obj({'id':{'type':'integer'},'text':S})),
+           'remove_blocks':arr({'type':'integer'})})
 ISSUE=obj({'blocks':arr({'type':'integer'}),'reason':S})
 REVIEW=obj({'accepted':{'type':'boolean'},'issues':arr(ISSUE),
             'claims':arr(obj({'key':S,'value':S,'blocks':arr({'type':'integer'})}))})
@@ -55,7 +56,7 @@ def surfaces(tree):
             if value and not value.startswith('data:'):fields.append((field,value))
         if node.tag=='img':fields.append(('image',node.get('alt','')+' '+node.get('src','')[:250]))
         for field,value in fields:
-            nodes.append({'node':node,'block_node':block,'id':len(nodes),'block':block_id,'tag':node.tag,'field':field,'original':value})
+            nodes.append({'node':node,'block_node':block,'root':tree,'id':len(nodes),'block':block_id,'tag':node.tag,'field':field,'original':value})
     return nodes
 
 
@@ -63,7 +64,7 @@ def visible(nodes):
     result=[]
     for n in nodes:
         node=n['node']
-        if node.getparent() is None and node.tag!='html':continue
+        if node is not n['root'] and not any(p is n['root'] for p in node.iterancestors()):continue
         field=n['field']
         if field not in ('text','tail','image') and field not in node.attrib:continue
         value=(getattr(node,field) or '') if field in ('text','tail') else (
@@ -88,6 +89,26 @@ def review_original_changes(original,final):
         return packet if isinstance(packet,list) else [dict(zip(packet['fields'],row)) for row in packet['nodes']]
     before=unpack(original);after={n['id']:n for n in unpack(final)}
     return [n for n in before if after.get(n['id'])!=n]
+
+
+def preservation_batches(originals,final,before_readable,after_readable,limit=60000):
+    """Keep complete before/after blocks together within small-model contexts."""
+    changed={n['block'] for n in originals}
+    groups={b:{'original_changed_fields':[],'final_fields':[],
+               'original_blocks':[],'final_blocks':[]} for b in sorted(changed)}
+    for name,values in [('original_changed_fields',originals),('final_fields',final),
+                        ('original_blocks',before_readable),('final_blocks',after_readable)]:
+        for value in values:
+            if value['block'] in groups:groups[value['block']][name].append(value)
+    batch={k:[] for k in ('original_changed_fields','final_fields','original_blocks','final_blocks')};size=0
+    for group in groups.values():
+        length=len(encoded(group))
+        if length>limit:raise Rejected('Single preservation block exceeds review context budget')
+        if size and size+length>limit:
+            yield batch;batch={k:[] for k in batch};size=0
+        for name,values in group.items():batch[name].extend(values)
+        size+=length
+    if size:yield batch
 
 
 def peer_document(document):
@@ -193,6 +214,35 @@ def batches(nodes,selected,limit=48000):
     if batch:yield batch
 
 
+def removal_scopes(nodes):
+    owners={n['block_node']:n['block'] for n in nodes}
+    result={block:set() for block in owners.values()}
+    for n in nodes:
+        for owner in (n['node'],*n['node'].iterancestors()):
+            if owner in owners:result[owners[owner]].add(n['block'])
+    return result
+
+
+def remove_blocks(nodes,blocks,allowed,apply_changes=True,scopes=None):
+    """Remove whole semantic units, preserving surrounding text and stable IDs."""
+    owners={n['block']:n['block_node'] for n in nodes}
+    if not isinstance(blocks,list) or any(type(b) is not int or b not in allowed for b in blocks) or len(set(blocks))!=len(blocks):
+        raise Rejected('Invalid block removal')
+    chosen=[owners[b] for b in blocks];scopes=removal_scopes(nodes) if scopes is None else scopes
+    for block,owner in zip(blocks,chosen):
+        if owner.getparent() is None or owner.tag not in ('p','tr','li','figure','figcaption','h1','h2','h3','h4','meta'):
+            raise Rejected('Block is not independently removable')
+        if not scopes[block]<=allowed:
+            raise Rejected('Removal contains blocks outside this batch')
+    if not apply_changes:return []
+    log=[]
+    for block,owner in zip(blocks,chosen):
+        if any(parent in chosen for parent in owner.iterancestors()):continue
+        log.append({'block':block,'field':'block','original':etree.tostring(owner,encoding='unicode',method='html'),'replacement':''})
+        owner.drop_tree()
+    return log
+
+
 def identity_issues(nodes,spec):
     """Current canonical entity URLs/tooltips must not expose renamed identities.
 
@@ -218,7 +268,8 @@ def rewrite(document,scenario,facts,title,store,revision_at):
     if title in scenario['absent_titles']:return None,facts,[]
     tree=html.fromstring(document,parser=html.HTMLParser(encoding='utf-8'))
     if not tree.xpath(CONTENT):raise Rejected('No captured article body')
-    nodes=surfaces(tree);packet=document_packet(nodes)
+    nodes=surfaces(tree);packet=document_packet(nodes);original_readable=readable_document(nodes);block_scopes=removal_scopes(nodes)
+    block_owners={n['block']:n['block_node'] for n in nodes}
     if len(encoded(packet))>1500000:raise Rejected('Complete article exceeds planning context budget')
     context={'world_date':scenario['as_of'],'revision_date':revision_at,'article':title,
              'rules':scenario['facts'],'world_model':spec,'facts_at_world_date':facts,
@@ -265,8 +316,15 @@ def rewrite(document,scenario,facts,title,store,revision_at):
         def patch_batch(job,depth=0):
             batch_index,batch,rendered,local_feedback=job
             allowed={n['id'] for n in batch}
+            allowed_blocks={n['block'] for n in batch};removable=[]
+            for block in sorted(allowed_blocks):
+                owner=block_owners[block]
+                if owner.getparent() is not None and owner.tag in ('p','tr','li','figure','figcaption','h1','h2','h3','h4','meta') and block_scopes[block]<=allowed_blocks:
+                    removable.append(block)
             schema=copy.deepcopy(PATCH)
             schema['properties']['edits']['items']['properties']['id']={'type':'integer','enum':sorted(allowed)}
+            if removable:schema['properties']['remove_blocks']['items']={'type':'integer','enum':removable}
+            else:schema['properties']['remove_blocks']['maxItems']=0
             error=''
             for retry in range(2):
                 try:
@@ -280,6 +338,10 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                         'Use rendered_blocks to read normal sentence order; nodes are edit addresses, not a plain-text reading sequence. '
                         'Fields text/tail are visible text; href is a URL; title/alt/aria-label/content are attributes. '
                         'An empty href removes a link; an empty image removes it. Never replace an image filename. '
+                        'Use remove_blocks to remove an entire paragraph, table row, list item, heading, figure or meta tag '
+                        'whose subject did not occur or does not belong in the world. Do not leave an ineligible entity in a membership table '
+                        'or blank out individual cells when the whole row must go. Retain unrelated facts and historical events. '
+                        'Do not also edit fields inside a block you remove. Only remove block IDs present in this batch. '
                         'Do not invent link targets: use a target already present in the original document, a declared world title with a nonempty source_title, or unlink it. '
                         'When removing a false supporting citation, remove its associated label as well as its URL. '
                         'Keep inline whitespace and sentence boundaries. Fix only issues visible in this batch; other batches handle other blocks. '
@@ -292,13 +354,13 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                     if depth>=2 or len(groups)<2:raise
                     midpoint=len(groups)//2
                     store.event('semantic_chunk_split',batch=str(batch_index),depth=depth,blocks=len(groups))
-                    combined=[]
+                    combined=[];removals=[]
                     for suffix,group in [('a',set(groups[:midpoint])),('b',set(groups[midpoint:]))]:
                         part=[n for n in batch if n['block'] in group]
                         part_feedback=[i for i in local_feedback if not i['blocks'] or group.intersection(i['blocks'])]
                         subjob=(str(batch_index)+suffix,part,{k:v for k,v in rendered.items() if k in group},part_feedback)
-                        subedits,_=patch_batch(subjob,depth+1);combined.extend(subedits)
-                    return combined,allowed
+                        subedits,_,subremovals=patch_batch(subjob,depth+1);combined.extend(subedits);removals.extend(subremovals)
+                    return combined,allowed,removals
                 try:
                     # A requested new destination must exist in the routing
                     # contract. Unlink unsupported destinations rather than
@@ -318,17 +380,26 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                                 store.event('unsupported_link_removed',node=i,requested=edit['text'],reason=str(exc))
                                 edit['text']=''
                         normalized.append(edit)
-                    patch['edits']=normalized
+                    removals=patch.get('remove_blocks',[])
+                    remove_blocks(nodes,removals,allowed_blocks,apply_changes=False,scopes=block_scopes)
+                    removed_owners={n['block_node'] for n in nodes if n['block'] in removals}
+                    patch['edits']=[]
+                    for edit in normalized:
+                        i=edit['id']
+                        if type(i) is int and i in allowed and any(nodes[i]['node'] is owner or owner in nodes[i]['node'].iterancestors() for owner in removed_owners):
+                            store.event('edit_superseded_by_block_removal',node=i)
+                        else:patch['edits'].append(edit)
                     apply(nodes,patch['edits'],allowed,known_targets,apply_changes=False)
-                    return patch['edits'],allowed
+                    return patch['edits'],allowed,removals
                 except Rejected as exc:
                     error=str(exc)
                     if retry:raise
         workers=max(1,min(4,scenario.get('on_demand',{}).get('model_concurrency',4)))
         with ThreadPoolExecutor(max_workers=workers) as pool:
             # Requests use the same immutable context; apply disjoint results in DOM order.
-            for patch,allowed in pool.map(patch_batch,jobs):
+            for patch,allowed,removals in pool.map(patch_batch,jobs):
                 edits.extend(apply(nodes,patch,allowed,known_targets))
+                edits.extend(remove_blocks(nodes,removals,{nodes[i]['block'] for i in allowed},scopes=block_scopes))
         final=document_packet(nodes)
         review=ask(store,scenario,'reviewer',f'page-review-{repair}',COMMON+
             'Independently audit the COMPLETE final document, including unchanged nodes and all link/attribute values. '
@@ -343,21 +414,31 @@ def rewrite(document,scenario,facts,title,store,revision_at):
             'Extract explicit claims corresponding to known fact keys at the effective date, using their canonical values. '
             'Only use the listed fact keys; omit claims about unrelated preserved facts or date attributes without their own listed key. '
             'Historical claims outside the effective date must be assessed in context, not incorrectly treated as current claims. '
-            'An accepted page must have no remaining issues.',
+            'Set accepted=true if and only if issues is empty. If rejecting, state at least one concrete remaining defect.',
             {**context,'final_document':readable_document(nodes)},review_schema)
         originals=review_original_changes(packet,final)
-        changed_blocks={n['block'] for n in originals}
-        preservation=ask(store,scenario,'preservation_reviewer',f'preservation-review-{repair}',COMMON+
+        preservation_jobs=list(preservation_batches(originals,visible(nodes),original_readable,readable_document(nodes)))
+        def check_preservation(item):
+            index,data=item
+            local_schema=obj({'accepted':{'type':'boolean'},'issues':copy.deepcopy(review_schema['properties']['issues'])})
+            local_schema['properties']['issues']['items']['properties']['blocks']['items']={'type':'integer','enum':sorted({n['block'] for n in data['original_changed_fields']})}
+            return ask(store,scenario,'preservation_reviewer',f'preservation-review-{repair}-{index}',COMMON+
             'Check ONLY preservation of unrelated source facts across these edits. Original fields are the BEFORE version; '
             'they intentionally contain claims that conflict with the alternate world. Never report an original claim as '
             'retained unless it actually appears in final_fields. Missing final IDs were removed. '
+            'Read original_blocks and final_blocks for normal sentence order; text/tail fields are fragments, not sentences. '
+            'Do not reject changed royal facts, harmless wording, optional infobox rows, empty fields, or formatting preferences. '
             'Allow changes or removal required by world rules, including invalid citations, images and impossible events. '
             'Reject lost unrelated dates, facts, broken joins or invented replacements. Do not require the writer to '
             'preserve a false event as a hypothetical future event. Unchanged fields elsewhere are identical to the source. '
-            'List only concrete remaining problems, referring to valid block IDs.',
-            {**context,'original_changed_fields':originals,
-             'final_fields':[n for n in visible(nodes) if n['block'] in changed_blocks]},
-            obj({'accepted':{'type':'boolean'},'issues':review_schema['properties']['issues']}))
+            'List only concrete remaining problems, referring to valid block IDs. '
+            'Set accepted=true if and only if issues is empty. Rejection requires a concrete defect.',
+            {**context,**data},local_schema)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            preservation_parts=list(pool.map(check_preservation,enumerate(preservation_jobs)))
+        preservation={'accepted':all(p['accepted'] and not p['issues'] for p in preservation_parts),
+                      'issues':[issue for p in preservation_parts for issue in p['issues']]}
+        for index,part in enumerate(preservation_parts):store.event('preservation_review_part',repair=repair,part=index,review=part)
         store.event('preservation_review',repair=repair,review=preservation)
         if not preservation['accepted'] and not preservation['issues']:
             preservation['issues']=[{'blocks':[],'reason':'Preservation reviewer rejected without localized issues'}]
@@ -389,29 +470,33 @@ def review_peers(document,title,revision_at,scenario,peers,store):
     Pairwise calls keep context bounded without silently dropping distant pages.
     The world's max_versions budget also bounds this quadratic review cost.
     """
-    candidate=peer_document(document)
+    candidate=peer_document(document);jobs=[]
     for peer in peers:
         if peer['title']==title:continue
         other=peer_document(peer['document'])
         pairs=list(peer_pairs(candidate,other))
-        def compare(item):
-            index,(left,right)=item
-            compared,other_part,shared=shared_peer_fields(left,right)
-            result=ask(store,scenario,'peer_reviewer','cross-page-'+peer['title']+'-'+str(index),COMMON+
-            'Compare these two pages for incompatible claims about shared entities, relationships and events. '
-            'Different detail or silence is not a contradiction. Respect each revision date and historical context. '
-            'Each reported contradiction must quote two explicit incompatible statements, one from each page. '
-            'Do not reject for empty placeholders, valid historical references, or a claim absent from a supplied section. '
-            'Neither page may override the world specification. Return concrete contradictions if present. '
-            'If repairing the candidate cannot resolve the issue without changing the committed page or the world rules, say so.',
-            {'world_model':scenario['world_model'],'rules':scenario['facts'],
-             'committed':{'title':peer['title'],'revision_date':peer['revision_at'],'document':other_part},
-             'candidate':{'title':title,'revision_date':revision_at,'document':compared},
-             'shared_fields':shared,
-             'encoding':'An integer entry in either document is a zero-based index into shared_fields, replacing the same [field,value] pair. Expand references before comparing; all fields and block positions are retained.'},
-                obj({'accepted':{'type':'boolean'},'issues':arr(S)}))
-            store.event('cross_page_review',candidate=title,peer=peer['title'],part=index,parts=len(pairs),review=result)
-            if not result['accepted'] or result['issues']:
-                raise Rejected('Cross-page consistency rejected: '+json.dumps(result['issues']))
-        with ThreadPoolExecutor(max_workers=min(4,len(pairs))) as pool:
-            list(pool.map(compare,enumerate(pairs)))
+        jobs.extend((peer,index,len(pairs),pair) for index,pair in enumerate(pairs))
+    def compare(item):
+        peer,index,parts,(left,right)=item
+        compared,other_part,shared=shared_peer_fields(left,right)
+        result=ask(store,scenario,'peer_reviewer','cross-page-'+peer['title']+'-'+str(index),COMMON+
+        'Compare these two pages for incompatible claims about shared entities, relationships and events. '
+        'Different detail or silence is not a contradiction. Respect each revision date and historical context. '
+        'Each reported contradiction must quote two explicit incompatible statements, one from each page. '
+        'Do not reject for empty placeholders, valid historical references, or a claim absent from a supplied section. '
+        'Neither page may override the world specification. Return concrete contradictions if present. '
+        'If repairing the candidate cannot resolve the issue without changing the committed page or the world rules, say so. '
+        'Set accepted=true if and only if issues is empty.',
+        {'world_model':scenario['world_model'],'rules':scenario['facts'],
+         'committed':{'title':peer['title'],'revision_date':peer['revision_at'],'document':other_part},
+         'candidate':{'title':title,'revision_date':revision_at,'document':compared},
+         'shared_fields':shared,
+         'encoding':'An integer entry in either document is a zero-based index into shared_fields, replacing the same [field,value] pair. Expand references before comparing; all fields and block positions are retained.'},
+            obj({'accepted':{'type':'boolean'},'issues':arr(S)}))
+        store.event('cross_page_review',candidate=title,peer=peer['title'],part=index,parts=parts,review=result)
+        if not result['accepted'] or result['issues']:
+            raise Rejected('Cross-page consistency rejected: '+json.dumps(result['issues']))
+    if jobs:
+        workers=max(1,min(4,scenario.get('on_demand',{}).get('model_concurrency',4)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(pool.map(compare,jobs))
