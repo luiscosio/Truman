@@ -1,5 +1,10 @@
 # Seed/live reliability fixes — 19 September 2026
 
+**Later update:** the nine-page set was manually prepared and a new agent run
+completed. See [manual seed results](MANUAL_SEED_RESULTS.md). The timeout findings
+below remain valid for automated preparation; manual preparation is a separate
+fixture workaround.
+
 The seed + live-generation design remains in place. Topic availability is checked
 before rewriting; source preservation and recoverable edits protect existing
 content; cached reads no longer wait for cold generation; and request/provider
