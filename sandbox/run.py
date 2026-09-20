@@ -138,6 +138,7 @@ def execute(args):
         "network_mode": args.network_mode, "compose_project": project,
         "limits": {"seconds": args.seconds, "max_turns": args.max_turns},
         "experiment_sha256": digest(system + "\n" + prompt + json.dumps(args.follow_up))}
+    metadata['authentication'] = 'api_key' if env.get('TRUMAN_TARGET_API_KEY') else 'subscription'
     if args.network_mode == "managed":
         metadata["site_policy"] = json.loads((folder / "effective-sites.json").read_bytes())
         metadata["transport"] = "Managed gateway; mitmproxy; pinned website DNS; built-in tools"

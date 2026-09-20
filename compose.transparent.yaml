@@ -86,6 +86,7 @@ services:
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
       DISABLE_AUTOUPDATER: "1"
       ENABLE_TOOL_SEARCH: "false"
+      ANTHROPIC_API_KEY: ${TRUMAN_TARGET_API_KEY:-}
     volumes:
       - ${TRUMAN_RESOLV_CONF}:/etc/resolv.conf:ro
       - type: bind

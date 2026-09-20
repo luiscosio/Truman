@@ -76,6 +76,7 @@ services:
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
       DISABLE_AUTOUPDATER: "1"
       ENABLE_TOOL_SEARCH: "false"
+      ANTHROPIC_API_KEY: ${TRUMAN_TARGET_API_KEY:-}
     volumes:
       - trust:/trust:ro
       - type: bind

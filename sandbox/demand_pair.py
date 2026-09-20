@@ -58,7 +58,7 @@ def main():
   for number in range(1,len(tasks)+1):
    pair=[c for c in cases if c['question']==number];assert len(pair)==2
    run_paths=[ROOT/'runs'/c['id'] for c in pair];runs=[json.loads((r/'run.json').read_bytes()) for r in run_paths]
-   for key in ('experiment_sha256','requested_model','effort','limits','observed_tools','agent_adapter','network_mode','observed_message_models'):
+   for key in ('experiment_sha256','requested_model','effort','limits','observed_tools','agent_adapter','network_mode','observed_message_models','authentication'):
     assert runs[0].get(key)==runs[1].get(key),('Control mismatch',number,key)
    networks=[json.loads((r/'network-profile.json').read_bytes()) for r in run_paths]
    assert all(n['profile_seal']==config['profile_seal'] for n in networks)
