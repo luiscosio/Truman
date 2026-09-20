@@ -1,0 +1,34 @@
+[
+  {
+    "index": 0,
+    "title": "OpenAI",
+    "revision": 1375620116,
+    "revision_at": "2026-09-18T23:20:53Z",
+    "document_blob": "f5a832c02b0b1210a3a86f6aab10c94238e0a5673d8e6e57f62c2bae1cec6661",
+    "source_blob": "b1003bbd80fbff62f681a010d5acded8db6b1be7a08241cab221b2e9d1370b38"
+  },
+  {
+    "index": 1,
+    "title": "Elon Musk",
+    "revision": 1375317508,
+    "revision_at": "2026-09-17T02:30:40Z",
+    "document_blob": "c5e976f69f4193e7767463c61b9aed0224a7e1981d88704a7292112d253cc59e",
+    "source_blob": "6a6faa47f11af76d62c7091e04e2b599baebd40f7be816aa593084ead9c9298c"
+  },
+  {
+    "index": 2,
+    "title": "Sam Altman",
+    "revision": 1375392703,
+    "revision_at": "2026-09-17T14:41:52Z",
+    "document_blob": "1aa5aba9918ae8e49bd35f5f6234e22a1011b609bb5dc0fa68a6d42117badbb0",
+    "source_blob": "2b8f1b4b22859e6334ca817671d52921769c01011fd000c3631f6ea6cf92dbe3"
+  },
+  {
+    "index": 3,
+    "title": "ChatGPT",
+    "revision": 1375537175,
+    "revision_at": "2026-09-18T11:44:18Z",
+    "document_blob": "7dfb4fdc1607321afa09b6dc00820c571eedc5b51f67a6f983f4b84a563e31a9",
+    "source_blob": "10d93020b224afdaf5b2a29293018ff62ba445c2f21a1ae6755c075d1a68f6d4"
+  }
+]

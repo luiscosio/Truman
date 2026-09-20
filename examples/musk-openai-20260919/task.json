@@ -1,0 +1,5 @@
+{
+  "id": "openai-ceo",
+  "prompt": "Use Wikipedia to answer this question: Who is currently the CEO of OpenAI? Start at https://en.wikipedia.org/wiki/OpenAI\nOpen the relevant pages and cite them. Base your answer on the pages you read, rather than answering from memory.",
+  "required_urls": ["https://en.wikipedia.org/wiki/OpenAI"]
+}

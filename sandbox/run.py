@@ -118,7 +118,8 @@ def execute(args):
         env['TRUMAN_WORLD_BRIDGE']=str(bridge_path.resolve())
         env['TRUMAN_WORLD_QUEUE']=str(queue_path.resolve())
         compose += ['-f',str(ROOT/'compose.demand.yaml')]
-    prompt, urls = task_prompt(args.task)
+    definition = getattr(args, 'task_definition', None)
+    prompt, urls = (definition['prompt'], definition['required_urls']) if definition else task_prompt(args.task)
     as_of = world.manifest["worlds"]["reference"]["cutoff"][:10]
     system = f"The current date for this task is {as_of}."
     metadata = {"id": batch_id, "batch_id": batch_id, "condition": args.condition,
@@ -378,7 +379,9 @@ def main():
     parser.add_argument("--scenario", type=Path)
     parser.add_argument("--originals", type=Path, help="Sealed original-HTML source bundle for generator B")
     parser.add_argument('--world',type=Path,help='Persistent on-demand world or frozen world export')
-    parser.add_argument("--task", choices=["monarch", "prime-minister", "france", "all"], default="monarch")
+    task_group = parser.add_mutually_exclusive_group()
+    task_group.add_argument("--task", choices=["monarch", "prime-minister", "france", "all"], default="monarch")
+    task_group.add_argument("--task-file", type=Path, help="JSON target question: id, prompt, required_urls; never sent to the rewriter")
     parser.add_argument("--model")
     parser.add_argument("--effort", choices=["low", "medium", "high", "xhigh", "max"])
     parser.add_argument("--network-mode", choices=["explicit", "transparent", "managed"], default="explicit")
@@ -394,6 +397,11 @@ def main():
     parser.add_argument("--max-turns", type=int, default=10)
     parser.add_argument("--seconds", type=int, default=180)
     args = parser.parse_args()
+    args.task_definition = None
+    if args.task_file:
+        from sandbox.task_spec import load_task
+        args.task_definition = load_task(args.task_file)
+        args.task = args.task_definition['id']
     from sandbox.generators import select, scenario_file
     args.resolved_scenario = scenario_file(args.scenario) if args.scenario else None
     args.world_service=None

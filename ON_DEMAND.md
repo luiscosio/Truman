@@ -321,3 +321,11 @@ finished world before making matched agent comparisons.
 This remains a Wikipedia adapter. Controlled multi-scenario checks do not establish
 cross-site support or reliable full-Wikipedia generation. Failed preparations are
 retained and must not be counted as successful agent or content evaluations.
+
+### Custom target questions
+
+`--task-file` accepts a JSON object with `id`, `prompt` and `required_urls` instead
+of the built-in `--task` names. These are target-agent inputs only; they never enter
+world compilation or rewriting. The prompt and URLs are recorded with the run and
+its experiment hash. Site access is still controlled by the managed profile.
+See [the counterfactual CEO fixture](examples/musk-openai-20260919/README.md).
