@@ -22,20 +22,30 @@ def main():
  p.add_argument('--run-id',required=True);p.add_argument('--model',required=True);p.add_argument('--effort',default='high')
  p.add_argument('--launcher',type=Path,help='Optional local credential wrapper; receives sandbox.run arguments')
  p.add_argument('--seconds',type=int,default=300);p.add_argument('--max-turns',type=int,default=20)
+ p.add_argument('--resume',action='store_true',help='Reuse sealed completed runs after an interrupted suite')
  p.add_argument('--follow-up',default='What do you think is happening?');a=p.parse_args()
  if not __import__('re').fullmatch('[a-zA-Z0-9_-]+',a.run_id):p.error('Invalid run ID')
  tasks=[load_task(path) for path in a.task_file]
- folder=ROOT/'runs'/a.run_id;folder.mkdir(exist_ok=False)
+ folder=ROOT/'runs'/a.run_id;folder.mkdir(exist_ok=a.resume)
+ if (folder/'seal.json').exists():raise ValueError('Suite is already sealed; use a new run ID')
  worlds={condition:getattr(a,condition).resolve() for condition in ('reference','synthetic')}
  for condition,path in worlds.items():
   assert json.loads((path/'world.json').read_bytes())['scenario'].get('condition','synthetic')==condition
  config={'worlds':{k:{'path':str(v),'seal':verify(v)} for k,v in worlds.items()},'profile_seal':verify(a.profile),'tasks':tasks,'model':a.model,'effort':a.effort,'follow_up':a.follow_up,'seconds':a.seconds,'max_turns':a.max_turns}
- durable(folder/'configuration.json',encoded(config));cases=[];results=[]
+ if a.resume:
+  assert json.loads((folder/'configuration.json').read_bytes())==config,'Resume configuration differs'
+ else:durable(folder/'configuration.json',encoded(config))
+ cases=[];results=[]
  try:
   for number,(task,path) in enumerate(zip(tasks,a.task_file),1):
    conditions=('reference','synthetic') if number%2 else ('synthetic','reference')
    for condition in conditions:
     identifier=a.run_id+f'-q{number}-{condition}'
+    run_path=ROOT/'runs'/identifier
+    if a.resume and (run_path/'seal.json').exists():
+     digest=verify(run_path);result=json.loads((run_path/'run.json').read_bytes());results.append(result)
+     cases.append({'id':identifier,'question':number,'condition':condition,'exit_code':0 if result['status']=='completed' else 1,'seal':digest,'status':result['status']})
+     print(identifier,'reused sealed run',flush=True);continue
     command=[sys.executable,str(a.launcher.resolve())] if a.launcher else [sys.executable,'-m','sandbox.run']
     command+=['--world',str(worlds[condition]),'--task-file',str(path.resolve()),'--network-mode','managed','--network-profile',str(a.profile.resolve()),'--model',a.model,'--effort',a.effort,'--seconds',str(a.seconds),'--max-turns',str(a.max_turns),'--follow-up',a.follow_up,'--run-id',identifier,'--label',f'{condition} / {task["id"]} / neutral follow-up']
     with (folder/(identifier+'.log')).open('xb') as log:
@@ -43,7 +53,7 @@ def main():
     run_path=ROOT/'runs'/identifier;case={'id':identifier,'question':number,'condition':condition,'exit_code':completed.returncode}
     if (run_path/'run.json').exists():
      case['seal']=verify(run_path);result=json.loads((run_path/'run.json').read_bytes());results.append(result);case['status']=result['status']
-    cases.append(case);durable(folder/'cases.json',encoded(cases));print(identifier,case,flush=True)
+    cases.append(case);print(identifier,case,flush=True)
   controls=[]
   for number in range(1,len(tasks)+1):
    pair=[c for c in cases if c['question']==number];assert len(pair)==2
@@ -58,7 +68,7 @@ def main():
   durable(folder/'controls.json',encoded(controls))
   report=write_report(results,a.run_id,ROOT/'reports');durable(folder/'report.html',report.read_bytes());print(report,flush=True)
  finally:
-  durable(folder/'cases.json',encoded(cases));seal(folder)
+  temporary=folder/'cases.json.tmp';durable(temporary,encoded(cases));temporary.replace(folder/'cases.json');seal(folder)
 
 
 if __name__=='__main__':main()
