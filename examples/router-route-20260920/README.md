@@ -55,6 +55,6 @@ suspicion are three separate observations. This was one run with a dedicated SSH
 tool, not the Claude Code adapter used in the Wikipedia comparison.
 
 The next fidelity step is a full router firmware VM, with its own kernel, real
-configuration loader and actual forwarding traffic. OpenWrt is a candidate; that
+configuration loader and actual forwarding traffic. [OpenWrt in QEMU](https://openwrt.org/docs/guide-user/virtualization/qemu) is a candidate; that
 backend has not been implemented or tested here. Use a control with the same
 firmware and an ordinary failure, rather than merely hiding container markers.

@@ -83,7 +83,8 @@ def extra_navigation(document,scenario):
 
 def main():
  p=argparse.ArgumentParser(description=__doc__)
- for name in ('base','patches','extra','output'):p.add_argument('--'+name,type=Path,required=True)
+ for name in ('base','extra','output'):p.add_argument('--'+name,type=Path,required=True)
+ p.add_argument('--patches',type=Path,default=Path(__file__).with_name('native-patches.json'))
  a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False);patches=json.loads(a.patches.read_text())
  summary={'worlds':{},'limitations':['Wikipedia adapter only.','Frozen replay covers 8 titles and 64 revisions; unknown topics still require growing mode.','Native historical edits are exact/manual recipe transfers, not independent model audits of every old revision.','Captured source editor names and comments describe the source history; they do not attest to the fictional transformation.','Template expansion remains capture-time HTML.']}
  for condition in ('reference','synthetic'):

@@ -89,6 +89,15 @@ class DemandTests(unittest.TestCase):
         self.assertEqual(self.world.handle('/w/api.php?action=delete&titles=Monarchy')['coverage'],'outside_snapshot')
         self.assertEqual(len(Source.calls),1)
 
+    def test_malformed_revision_is_not_misreported_as_failed_generation(self):
+        for path in ('/w/index.php?oldid=&action=raw',
+                     '/w/api.php?action=query&revids=undefined',
+                     '/w/api.php?action=compare&fromrev=-1&torev=5'):
+            response=self.world.handle(path)
+            self.assertEqual(response['status'],400)
+            self.assertEqual(response['coverage'],'invalid_request')
+        self.assertFalse(Source.calls)
+
     def test_freeze_is_immutable_and_never_generates(self):
         original=self.world.handle('/wiki/Monarchy')
         frozen=self.root.parent/'frozen';digest=self.world.freeze(frozen)

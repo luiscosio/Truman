@@ -8,10 +8,17 @@ from sandbox.rewrite_capture import CONTENT
 from truman.world import wiki_url
 
 
+class InvalidRequest(ValueError):pass
+
+
 def respond(world,target):
     from sandbox.demand import CoverageMiss, NeedsGeneration
     parts=urlsplit(target);q=parse_qs(parts.query,keep_blank_values=True)
     def param(name,default=''):return q.get(name,[default])[0]
+    def revision_id(value):
+        if not value.isascii() or not value.isdigit() or int(value)<1:
+            raise InvalidRequest('A positive revision ID is required.')
+        return int(value)
     def number(name,default,cap):
         raw=param(name,str(default));value=cap if raw=='max' else int(raw)
         if not 1<=value<=cap:raise CoverageMiss('Requested limit exceeds supported budget')
@@ -74,14 +81,14 @@ def respond(world,target):
                         'snippet':extract(a,True)[:300],'size':len(world.bytes(a['text_blob'])),'timestamp':p['revision_at']})
                 return out({'batchcomplete':'','query':{'searchinfo':{'totalhits':len(results)},'search':results}})
             if action=='compare':
-                first=world.revision(int(param('fromrev')));second=world.revision(int(param('torev')))
+                first=world.revision(revision_id(param('fromrev')));second=world.revision(revision_id(param('torev')))
                 a=world.bytes(first['text_blob']).decode().splitlines();b=world.bytes(second['text_blob']).decode().splitlines()
                 diff=difflib.HtmlDiff().make_table(a,b,context=True)
                 return out({'compare':{'fromrevid':first['record']['revid'],'torevid':second['record']['revid'],'*':diff}})
             if 'list' in q or 'meta' in q:raise CoverageMiss('Unsupported API list')
             if action not in ('query','parse'):raise CoverageMiss('Unsupported API action')
             if 'revids' in q:
-                articles=[world.revision(int(x)) for x in param('revids').split('|')]
+                articles=[world.revision(revision_id(x)) for x in param('revids').split('|')]
                 names=[a['title'] for a in articles]
             else:
                 names=param('titles',param('page')).split('|')
@@ -158,7 +165,7 @@ def respond(world,target):
             if title.startswith('Special:'):raise CoverageMiss('Unsupported special page')
             article=world.ensure(title)
         elif parts.path=='/w/index.php':
-            article=world.revision(int(param('oldid'))) if 'oldid' in q else world.ensure(param('title'))
+            article=world.revision(revision_id(param('oldid'))) if 'oldid' in q else world.ensure(param('title'))
         else:raise CoverageMiss('Unsupported Wikipedia route')
         if article.get('missing'):return article_html(article)
         action=param('action','view')
@@ -175,6 +182,8 @@ def respond(world,target):
         return article_html(article)
     except NeedsGeneration:
         raise
+    except InvalidRequest as exc:
+        return out({'error':{'code':'badvalue','info':str(exc)}},400,coverage='invalid_request')
     except CoverageMiss as exc:
         return out({'error':{'code':'unavailable','info':'Requested resource is unavailable.'}},409,coverage='outside_snapshot')
     except Exception as exc:
