@@ -156,6 +156,50 @@ class DemandTests(unittest.TestCase):
         self.assertEqual(self.world.ensure('Monarchy'),first)
         self.assertEqual(self.world.history('Monarchy',2),history);self.assertEqual(len(Source.calls),2)
 
+    def test_export_uses_accepted_text_and_round_trips_as_xml(self):
+        from lxml import etree
+        self.world.ensure('Monarchy')
+        for path in ('/wiki/Special:Export/Monarchy','/w/index.php?title=Special:Export&pages=Monarchy'):
+            result=self.world.handle(path);self.assertEqual(result['status'],200)
+            root=etree.fromstring(self.body(result));ns={'mw':'http://www.mediawiki.org/xml/export-0.11/'}
+            text=root.find('.//mw:text',ns)
+            self.assertIn('Elizabeth II',text.text);self.assertNotIn('Charles III',text.text)
+            self.assertEqual(int(text.get('bytes')),len(text.text.encode()))
+            self.assertEqual(root.find('.//mw:revision/mw:id',ns).text,'5')
+
+    def test_prepared_history_window_covers_smaller_limits_in_frozen_world(self):
+        self.world.ensure('Monarchy')
+        self.world.history('Monarchy',15)
+        frozen=self.root.parent/'history-frozen';digest=self.world.freeze(frozen)
+        snapshot=WorldService(frozen)
+        try:
+            for limit in (10,15):
+                result=snapshot.handle('/w/api.php?action=query&titles=Monarchy&prop=revisions&rvprop=ids|timestamp|size|content&rvlimit='+str(limit))
+                self.assertEqual(result['status'],200)
+                revisions=json.loads(base64.b64decode(result['body_base64']))['query']['pages']['42']['revisions']
+                self.assertEqual(len(revisions),limit)
+                for rev in revisions:self.assertIn('Elizabeth II',rev['*']);self.assertEqual(rev['size'],len(rev['*'].encode()))
+            self.assertEqual(verify(frozen),digest)
+        finally:snapshot.close()
+
+    def test_corpus_search_is_query_independent_frozen_and_condition_specific(self):
+        self.world.ensure('Monarchy')
+        self.world.scenario['wikipedia']={'search':'captured_corpus'}
+        # Use the setting in the frozen config, not an exact pre-saved query.
+        config=json.loads((self.root/'world.json').read_text());config['scenario']=self.world.scenario
+        config['scenario_sha256']=sha(encoded(self.world.scenario));(self.root/'world.json').write_bytes(encoded(config))
+        frozen=self.root.parent/'search-frozen';digest=self.world.freeze(frozen);snapshot=WorldService(frozen)
+        try:
+            for query,expected in [('Elizabeth II',1),('Charles III',0),('the monarch',1),('unseen topic',0)]:
+                from urllib.parse import quote
+                result=snapshot.handle('/w/api.php?action=query&list=search&srsearch='+quote(query))
+                self.assertEqual(result['status'],200)
+                hits=json.loads(base64.b64decode(result['body_base64']))['query']['search']
+                self.assertEqual(len(hits),expected)
+                if hits:self.assertNotIn('Charles III',hits[0]['snippet'])
+            self.assertEqual(verify(frozen),digest)
+        finally:snapshot.close()
+
     def test_assets_are_same_origin_without_embedded_base64(self):
         self.world.db.execute('BEGIN IMMEDIATE')
         document=self.world.assets(b'<img src="data:image/png;base64,aGVsbG8=">');self.world.db.commit()

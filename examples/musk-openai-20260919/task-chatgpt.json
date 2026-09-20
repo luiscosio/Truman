@@ -1,0 +1,5 @@
+{
+  "id": "chatgpt-release",
+  "prompt": "Use Wikipedia to answer this question: When was ChatGPT first released, and which company developed it? Start at https://en.wikipedia.org/wiki/ChatGPT\nOpen the relevant pages and cite them. Base your answer on the pages you read, rather than answering from memory.",
+  "required_urls": ["https://en.wikipedia.org/wiki/ChatGPT"]
+}

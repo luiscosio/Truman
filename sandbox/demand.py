@@ -56,7 +56,7 @@ CREATE TABLE receipts (id TEXT PRIMARY KEY, value TEXT);''')
             for alias in [entity['source_title'],entity['title'],*entity['aliases']]:
                 db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(title_key(alias),title_key(entity['source_title'])))
         db.commit()
-    for name in ('demand.py','demand_model.py','demand_source.py','demand_routes.py','demand_bridge.py','rewrite_model.py','demand_world.py','demand_rewrite.py','demand_availability.py','demand_integrity.py','demand_budget.py','generators.py'):
+    for name in ('demand.py','demand_model.py','demand_source.py','demand_routes.py','demand_bridge.py','rewrite_model.py','demand_world.py','demand_rewrite.py','demand_availability.py','demand_integrity.py','demand_budget.py','generators.py','wikipedia_coverage.py'):
         path=Path(__file__).with_name(name)
         if path.exists():durable(root/('code-'+name),path.read_bytes())
     return root
@@ -94,7 +94,7 @@ class WorldService:
         if self.config.get('scenario_sha256',sha(encoded(self.config['scenario'])))!=sha(encoded(self.config['scenario'])):
             raise ValueError('World specification changed: create a new world version')
         self.scenario=self.config['scenario'];self.source_factory=source_factory;self.writer=writer
-        self.code={p.name:p.read_bytes() for p in Path(__file__).parent.glob('*.py') if p.name.startswith(('demand','rewrite_')) or p.name=='generators.py'}
+        self.code={p.name:p.read_bytes() for p in Path(__file__).parent.glob('*.py') if p.name.startswith(('demand','rewrite_')) or p.name in ('generators.py','wikipedia_coverage.py')}
         self.readonly=(self.root/'seal.json').exists()
         if self.readonly:verify(self.root)
         self.lock=threading.RLock()
@@ -293,7 +293,14 @@ class WorldService:
 
     def history_metadata(self,title,limit):
         key=self.resolve(title)
-        records=self.cached_operation('history:'+key+':'+str(limit),lambda source:source.history(key,limit))
+        # A prepared larger window also covers smaller requests. Do not require
+        # an exact cache-key match for every agent's choice of page size.
+        windows=[]
+        prefix='history:'+key+':'
+        for cache_key,value in self.db.execute('SELECT key,value FROM cache WHERE key LIKE ?',('history:%',)):
+            if cache_key.startswith(prefix) and cache_key[len(prefix):].isdigit() and int(cache_key[len(prefix):])>=limit:
+                windows.append((int(cache_key[len(prefix):]),json.loads(value)))
+        records=min(windows,key=lambda item:item[0])[1][:limit] if windows else self.cached_operation(prefix+str(limit),lambda source:source.history(key,limit))
         return [{**r,'comment':'','user':''} if self.scenario.get('rewrite_pipeline')=='world-v2' else dict(r) for r in records]
 
     def revision(self,revision):
@@ -311,7 +318,7 @@ class WorldService:
     def bootstrap(self,destination):
         destination=Path(destination);destination.mkdir(parents=True,exist_ok=False)
         durable(destination/'snapshot.json',encoded({'schema_version':1,'kind':'truman-frozen-world',
-            'condition':'synthetic','as_of':self.scenario['as_of'],'articles':{},'routes':{},
+            'condition':self.scenario.get('condition','synthetic'),'as_of':self.scenario['as_of'],'articles':{},'routes':{},
             'presentation':'on-demand-v1','bundle_manifest_sha256':sha(encoded(self.config)),
             'renderer_image':self.config['renderer_image'],
             'generator':{'id':'b','mode':'frozen' if self.readonly else 'on-demand','provider':'anthropic',
@@ -319,6 +326,9 @@ class WorldService:
         seal(destination);return destination
 
     def search(self,query,limit):
+        if self.scenario.get('wikipedia',{}).get('search')=='captured_corpus':
+            from sandbox.wikipedia_coverage import search_corpus
+            return search_corpus(self,query,limit)
         hits=self.cached_operation('search:'+query+':'+str(limit),lambda source:source.search(query,limit))
         return [self.ensure(hit['title']) for hit in hits]
 

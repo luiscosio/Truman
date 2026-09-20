@@ -33,6 +33,21 @@ def respond(world,target):
         return out(world.bytes(article['html_blob']),mime='text/html; charset=utf-8',proof=article['page'])
     try:
         if len(target)>12000 or parts.scheme or parts.netloc:raise CoverageMiss('Invalid request target')
+        export_title=unquote(parts.path[6:]) if parts.path.startswith('/wiki/') else param('title') if parts.path=='/w/index.php' else ''
+        if export_title=='Special:Export' or export_title.startswith('Special:Export/'):
+            from sandbox.wikipedia_coverage import export_xml
+            names=(export_title[len('Special:Export/'): ] if export_title.startswith('Special:Export/') else param('pages')).split('\n')
+            if not names[0] or len(names)>10:raise CoverageMiss('Supply 1-10 export titles')
+            articles=[world.ensure(name) for name in names]
+            return out(export_xml(world,articles),mime='application/xml; charset=utf-8',coverage='world_missing' if all(a.get('missing') for a in articles) else 'derived')
+        if (parts.path=='/w/index.php' and 'search' in q) or export_title=='Special:Search':
+            root=etree.Element('html');head=etree.SubElement(root,'head');etree.SubElement(head,'title').text='Search results - Wikipedia'
+            content=etree.SubElement(root,'body');etree.SubElement(content,'h1').text='Search results'
+            for a in world.search(param('search'),number('limit',10,50)):
+                if a.get('missing'):continue
+                p=etree.SubElement(content,'p');etree.SubElement(p,'a',href=wiki_url(a['page']['display_title'])).text=a['page']['display_title']
+                etree.SubElement(content,'p').text=extract(a,True)[:300]
+            return out(etree.tostring(root,encoding='utf-8',method='html'),mime='text/html; charset=utf-8')
         if parts.path.startswith('/w/resources/'):
             key=parts.path.rsplit('/',1)[1]
             asset=world.read('cache','asset:'+key)
@@ -52,7 +67,7 @@ def respond(world,target):
                 data=world.cached_operation('siteinfo',lambda source:source.api(action='query',meta='siteinfo',siprop='general|namespaces|statistics')['query'])
                 return out({'batchcomplete':'','query':{k:data[k] for k in wanted}})
             if action=='query' and param('list')=='search':
-                hits=world.search(param('srsearch'),number('srlimit',5,10));results=[]
+                hits=world.search(param('srsearch'),number('srlimit',5,50));results=[]
                 for a in hits:
                     if a.get('missing'):continue
                     p=a['page'];results.append({'ns':0,'pageid':p['page_id'],'title':p['display_title'],
@@ -72,6 +87,11 @@ def respond(world,target):
                 names=param('titles',param('page')).split('|')
                 if not names[0] or len(names)>10:raise CoverageMiss('Supply 1-10 titles')
                 articles=[world.ensure(unquote(name)) for name in names]
+            if action=='query' and 'export' in q:
+                from sandbox.wikipedia_coverage import export_xml
+                xml=export_xml(world,articles)
+                if 'exportnowrap' in q:return out(xml,mime='application/xml; charset=utf-8')
+                return out({'query':{'export':{'*':xml.decode()}}})
             if action=='parse':
                 a=articles[0]
                 if a.get('missing'):return out({'error':{'code':'missingtitle','info':'The page does not exist.'}},coverage='world_missing')
@@ -106,7 +126,7 @@ def respond(world,target):
                     info['extract']=text if 'explaintext' in q else '<p>'+__import__('html').escape(text).replace('\n\n','</p><p>')+'</p>'
                 if 'revisions' in props:
                     if any(k in q for k in ('rvstart','rvend','rvstartid','rvendid','rvdir','rvcontinue')):raise CoverageMiss('Revision filtering is not supported yet')
-                    count=number('rvlimit',1,5)
+                    count=number('rvlimit',1,50)
                     requested=param('rvprop','ids|timestamp').split('|')
                     if not set(requested)<={'ids','timestamp','user','comment','content','size','sha1','flags'}:raise CoverageMiss('Unsupported revision property')
                     needs_content=bool(set(requested)&{'content','size','sha1'})
@@ -142,12 +162,11 @@ def respond(world,target):
         action=param('action','view')
         if action=='raw':return out(world.bytes(article['text_blob']),mime='text/plain; charset=utf-8',proof=article['page'])
         if action=='history':
-            versions=world.history(article['title'],number('limit',5,5));tree=html.fromstring(world.bytes(article['html_blob']),parser=html.HTMLParser(encoding='utf-8'))
+            versions=world.history_metadata(article['title'],number('limit',10,50));tree=html.fromstring(world.bytes(article['html_blob']),parser=html.HTMLParser(encoding='utf-8'))
             root=tree.xpath(CONTENT)[0];root.clear()
             heading=etree.SubElement(root,'h2');heading.text='Revision history'
-            for a in versions:
-                if a.get('missing'):continue
-                p=etree.SubElement(root,'p');r=a['record'];link=etree.SubElement(p,'a',href='/w/index.php?oldid='+str(r['revid']))
+            for r in versions:
+                p=etree.SubElement(root,'p');link=etree.SubElement(p,'a',href='/w/index.php?oldid='+str(r['revid']))
                 link.text=r['timestamp'];link.tail=' '+r.get('user','')+' '+r.get('comment','')
             return out(etree.tostring(tree,encoding='utf-8',method='html'),mime='text/html; charset=utf-8')
         if action!='view':raise CoverageMiss('Unsupported action')
