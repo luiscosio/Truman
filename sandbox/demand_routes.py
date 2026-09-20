@@ -107,8 +107,10 @@ def respond(world,target):
                     parsed['text']={'*':etree.tostring(root,encoding='unicode',method='html')}
                 if 'wikitext' in prop:
                     if param('section')=='0':
-                        # A DOM-derived lead projection, not the complete article.
-                        parsed['wikitext']={'*':extract(a,True)}
+                        if a.get('text_format')=='native_wikitext':
+                            from sandbox.wikipedia_native import lead
+                            parsed['wikitext']={'*':lead(world.bytes(a['text_blob']).decode())}
+                        else:parsed['wikitext']={'*':extract(a,True)}
                     else:parsed['wikitext']={'*':world.bytes(a['text_blob']).decode()}
                 if 'revid' in prop:parsed['revid']=a['record']['revid']
                 return out({'parse':parsed},proof=a['page'])

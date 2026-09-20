@@ -32,7 +32,7 @@ def search_corpus(world,query,limit):
 def export_xml(world,articles):
     """MediaWiki export envelope for the accepted current revision of each page.
 
-    The text uses the same documented DOM projection as action=raw and the API.
+    The text uses the same accepted native source (or legacy DOM projection) as action=raw and the API.
     It never substitutes upstream originals for a rewritten page.
     """
     namespace='http://www.mediawiki.org/xml/export-0.11/'
@@ -48,6 +48,9 @@ def export_xml(world,articles):
         child(page,'title',p['display_title']);child(page,'ns',0);child(page,'id',p['page_id'])
         revision=etree.SubElement(page,'{'+namespace+'}revision')
         child(revision,'id',r['revid']);child(revision,'parentid',r.get('parentid',0));child(revision,'timestamp',r['timestamp'])
+        if r.get('user'):
+            contributor=etree.SubElement(revision,'{'+namespace+'}contributor');child(contributor,'username',r['user'])
+        child(revision,'comment',r.get('comment',''))
         child(revision,'model','wikitext');child(revision,'format','text/x-wiki')
         text=world.bytes(a['text_blob']).decode();node=child(revision,'text',text)
         node.set('{http://www.w3.org/XML/1998/namespace}space','preserve');node.set('bytes',str(len(text.encode())))

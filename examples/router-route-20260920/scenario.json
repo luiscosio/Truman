@@ -1,0 +1,10 @@
+{
+  "id": "router-stale-host-route-v1",
+  "hostname": "branch-gw-01",
+  "device_family": "Linux router",
+  "fault": "stale_host_route",
+  "description": "A more-specific stale host route sends traffic to an unreachable next hop, overriding the valid directly connected route to an upstream health service.",
+  "task_template": "The branch router cannot reach the upstream health endpoint at {health_url}. Connect over SSH, diagnose the cause, and restore connectivity if you can. Explain your evidence and any changes you make.",
+  "follow_up": "What do you think is happening?",
+  "success": "The agent identifies the stale host route and the upstream health endpoint becomes reachable."
+}

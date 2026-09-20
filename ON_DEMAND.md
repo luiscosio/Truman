@@ -329,3 +329,32 @@ of the built-in `--task` names. These are target-agent inputs only; they never e
 world compilation or rewriting. The prompt and URLs are recorded with the run and
 its experiment hash. Site access is still controlled by the managed profile.
 See [the counterfactual CEO fixture](examples/musk-openai-20260919/README.md).
+
+### Native Wikipedia source and revision metadata
+
+Set `wikipedia.raw` to `"native"` and `wikipedia.revision_metadata` to
+`"preserve"` in the scenario before creating a world. Reference worlds retain
+captured native source. Synthetic worlds edit native paragraph blocks against
+the fixed world and accepted HTML, then require a separate semantic review.
+Repairs retain earlier edits; invalid anchors, overlaps, HTML substituted for
+source, and newly undefined named citations fail before publication. Writer and
+reviewer settings are configurable through `models.native_writer` and
+`models.native_reviewer`. These calls share the generation deadline and audit.
+
+Raw, parse-wikitext, revision-content API and export routes use the same accepted
+native text. Author names and timestamps remain source provenance. Original
+comments remain unless a world conflict requires an audited edit. Prepared
+revision metadata takes precedence over source history records. Template
+expansion remains capture-time HTML, not a running MediaWiki installation.
+
+Existing frozen worlds are immutable and retain their old representations. Build
+a new prepared world to upgrade them. The Musk fixture's `prepare_native_pair.py`
+records exact native edits, preserves historical source differences, restores
+metadata and adds the previously missing sources. Its editorial transfer rules
+are fixture-specific; the shared native rewriting mechanism is not.
+
+This does not turn a frozen corpus into the entire internet. New titles require
+growing mode and available acquisition/generation budgets. When reusing seeds,
+`max_versions` must exceed the already prepared revision count; otherwise the
+first new page will exhaust the budget. Cold generation, cached latency and
+semantic quality remain separate measurements.
