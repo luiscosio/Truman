@@ -483,6 +483,8 @@ def rewrite(document,scenario,facts,title,store,revision_at):
     known_targets|={site.key_from_href(n['value']) for n in visible(nodes) if n['field']=='href'}-{None}
     feedback=[];edits=[]
     blocked_removals={b['block'] for b in original_readable if any(q in b['text'] for q in plan.get('preserve',[]))}
+    # Deletions the removal review allowed, kept across passes so the page audit judges them as reviewed.
+    approved_removals={}
     for repair in range(3):
         refused=[]
         if repair:
@@ -629,6 +631,9 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                 raise Rejected('Removal review must decide every requested block exactly once')
             removal_review['issues']=[{'blocks':[d['block']],'reason':d['reason']} for d in decisions if d['decision']=='rewrite']
             store.event('removal_review',repair=repair,review=removal_review)
+            original_text={b['block']:b['text'] for b in original_readable}
+            approved_removals.update({d['block']:{'block':d['block'],'original_text':original_text.get(d['block'],''),'reason':d['reason']}
+                                      for d in decisions if d['decision']=='allow'})
             if removal_review['issues']:
                 # Apply everything else from this pass; only refused removals return as feedback.
                 refused=removal_review['issues'];rejected={b for i in refused for b in i['blocks']}
@@ -647,6 +652,11 @@ def rewrite(document,scenario,facts,title,store,revision_at):
             'source_text_unchanged marks exact source text; changed blocks also supply original_text for provenance. '
             'Source preservation is checked separately. '
             'Do not rely on the edit plan as evidence of correctness. '
+            'Navigation lists, list items and categories assert membership in a grouping; an entry whose membership '
+            'the world makes false belongs outside that grouping even when its target page still exists. '
+            'reviewed_removals lists whole-block deletions an independent removal review approved, with its reasons. '
+            'Do not report their absence as a defect unless a world rule requires the removed content; '
+            'still report defects they leave in surrounding text. '
             'Do not reject ordinary maintenance categories or blank placeholders left after removal of impossible events; '
             'report concrete factual or grammatical defects, not the mere presence of empty fields. '
             'List only definite remaining defects. Do not list acceptable content, a concern you then dismiss, '
@@ -663,7 +673,8 @@ def rewrite(document,scenario,facts,title,store,revision_at):
             'Only use the listed fact keys; omit claims about unrelated preserved facts or date attributes without their own listed key. '
             'Historical claims outside the effective date must be assessed in context, not incorrectly treated as current claims. '
             'Return issues=[] only when no concrete remaining defect was found. Each reported defect must be actionable.',
-            {**context,'final_document':attested_document(nodes,original_readable),'preserved_source_passages':plan['preserve']},review_schema)
+            {**context,'final_document':attested_document(nodes,original_readable),'preserved_source_passages':plan['preserve'],
+             'reviewed_removals':[r for b,r in sorted(approved_removals.items()) if b not in {n['block'] for n in visible(nodes)}]},review_schema)
         # Acceptance is a deterministic consequence of a completed audit with
         # no findings, not a second model output that can contradict its list.
         review['accepted']=not review['issues']

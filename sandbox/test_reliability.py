@@ -152,6 +152,20 @@ class ReliabilityTests(unittest.TestCase):
         # The approved removal applied in the first pass; the refusal returned as feedback for the next pass.
         self.assertIn('page-review-0',stages)
 
+    def test_the_page_audit_sees_removals_the_removal_review_approved(self):
+        source=b'<div class="mw-parser-output"><p>Kept history.</p><ul><li>Member entry</li><li>Other entry</li></ul></div>'
+        audited=[]
+        def model(store,scenario,role,stage,system,data,schema):
+            if stage=='page-plan':return {'summary':'update','changes':[{'blocks':[n['block'] for n in data['document']],'reason':'update','facts':[]}]}
+            if stage.startswith('patch-0'):return {'edits':[],'remove_blocks':sorted({n['block'] for n in data['nodes'] if n['value']=='Member entry'}),'move_blocks':[]}
+            if stage.startswith('removal-review'):return {'decisions':[{'block':b['block'],'decision':'allow','reason':'Membership is false'} for b in data['requested_removals']]}
+            if stage.startswith('page-review'):audited.append(data['reviewed_removals'])
+            return {'edits':[],'remove_blocks':[],'move_blocks':[],'issues':[],'claims':[]}
+        with patch('sandbox.demand_availability.ask',return_value={'status':'present','reason':'Existing topic','basis':[]}),patch('sandbox.demand_rewrite.ask',side_effect=model):
+            result,_,_=rewrite(source,WORLD_SCENARIO,normalize(WORLD_SCENARIO)['world_facts'],'Topic',Store(self.root/'reviewed-removal'),'2026-01-01')
+        self.assertNotIn(b'Member entry',result)
+        self.assertEqual([[(r['original_text'],r['reason']) for r in removals] for removals in audited],[[('Member entry','Membership is false')]])
+
     def test_diagnostic_seeds_cannot_be_reused_as_validated_seeds(self):
         world=self.world();article=world.ensure('Seed');article['validation_status']='unvalidated_diagnostic'
         with world.db:world.db.execute('UPDATE pages SET value=?',(json.dumps(article),))
