@@ -135,6 +135,23 @@ class ReliabilityTests(unittest.TestCase):
             result,_,_=rewrite(source,WORLD_SCENARIO,normalize(WORLD_SCENARIO)['world_facts'],'Topic',Store(self.root/'removal'),'2026-01-01')
         self.assertIn(b'Independent history.',result)
 
+    def test_a_refused_removal_does_not_discard_approved_ones_in_the_same_pass(self):
+        source=b'<div class="mw-parser-output"><p>Independent history.</p><p>Excluded event.</p></div>'
+        stages=[]
+        def model(store,scenario,role,stage,system,data,schema):
+            stages.append(stage)
+            if stage=='page-plan':return {'summary':'update','changes':[{'blocks':[n['block'] for n in data['document']],'reason':'update','facts':[]}]}
+            if stage.startswith('patch-0'):return {'edits':[],'remove_blocks':sorted({n['block'] for n in data['nodes']}),'move_blocks':[]}
+            if stage.startswith('removal-review'):
+                return {'decisions':[{'block':b['block'],'decision':'rewrite' if 'Independent' in b['text'] else 'allow','reason':'Decided'} for b in data['requested_removals']]}
+            return {'edits':[],'remove_blocks':[],'move_blocks':[],'issues':[],'claims':[]}
+        with patch('sandbox.demand_availability.ask',return_value={'status':'present','reason':'Existing topic','basis':[]}),patch('sandbox.demand_rewrite.ask',side_effect=model):
+            result,_,_=rewrite(source,WORLD_SCENARIO,normalize(WORLD_SCENARIO)['world_facts'],'Topic',Store(self.root/'partial-removal'),'2026-01-01')
+        self.assertIn(b'Independent history.',result)
+        self.assertNotIn(b'Excluded event.',result)
+        # The approved removal applied in the first pass; the refusal returned as feedback for the next pass.
+        self.assertIn('page-review-0',stages)
+
     def test_diagnostic_seeds_cannot_be_reused_as_validated_seeds(self):
         world=self.world();article=world.ensure('Seed');article['validation_status']='unvalidated_diagnostic'
         with world.db:world.db.execute('UPDATE pages SET value=?',(json.dumps(article),))

@@ -484,6 +484,7 @@ def rewrite(document,scenario,facts,title,store,revision_at):
     feedback=[];edits=[]
     blocked_removals={b['block'] for b in original_readable if any(q in b['text'] for q in plan.get('preserve',[]))}
     for repair in range(3):
+        refused=[]
         if repair:
             for block in sorted(selected):restore(block_owners[block])
         jobs=[]
@@ -629,9 +630,10 @@ def rewrite(document,scenario,facts,title,store,revision_at):
             removal_review['issues']=[{'blocks':[d['block']],'reason':d['reason']} for d in decisions if d['decision']=='rewrite']
             store.event('removal_review',repair=repair,review=removal_review)
             if removal_review['issues']:
-                feedback=removal_review['issues'];selected|=repair_scope({b for i in feedback for b in i['blocks']},block_scopes)
-                blocked_removals.update(b for i in feedback for b in i['blocks'])
-                continue
+                # Apply everything else from this pass; only refused removals return as feedback.
+                refused=removal_review['issues'];rejected={b for i in refused for b in i['blocks']}
+                blocked_removals.update(rejected)
+                proposals=[(patch,allowed,[b for b in blocks if b not in rejected],moves) for patch,allowed,blocks,moves in proposals]
         for patch,allowed,removals,moves in proposals:
             edits.extend(apply(nodes,patch,allowed,site,known_targets))
             edits.extend(remove_blocks(nodes,removals,{nodes[i]['block'] for i in allowed},scopes=block_scopes))
@@ -696,7 +698,7 @@ def rewrite(document,scenario,facts,title,store,revision_at):
         store.event('preservation_review',repair=repair,review=preservation)
         if not preservation['accepted'] and not preservation['issues']:
             preservation['issues']=[{'blocks':[],'reason':'Preservation reviewer rejected without localized issues'}]
-        issues=list(review['issues'])+list(preservation['issues'])+identity_issues(nodes,spec,site)
+        issues=list(refused)+list(review['issues'])+list(preservation['issues'])+identity_issues(nodes,spec,site)
         issues+=integrity_issues(site,document,etree.tostring(tree,encoding='utf-8',method='html'))
         final_reading=' '.join(b['text'] for b in readable_document(nodes))
         for quote in plan.get('preserve',[]):
