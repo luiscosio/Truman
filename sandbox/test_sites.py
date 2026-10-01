@@ -197,6 +197,7 @@ class GlobalVoicesTests(unittest.TestCase):
         site = load('globalvoices')
         key = '2026/09/21/seabed-rules'
         self.assertEqual(site.path(key), '/2026/09/21/seabed-rules/')
+        self.assertEqual((site.path('front'), site.url('front')), ('/', 'https://globalvoices.org/'))
         self.assertEqual(site.key_from_href('https://globalvoices.org/2026/09/21/seabed-rules/'), key)
         self.assertEqual(site.key_from_href('/2026/09/21/seabed-rules'), key)
         for other in ('/category/caribbean/', '/feed/', 'https://fr.globalvoices.org/2026/09/21/x/'):

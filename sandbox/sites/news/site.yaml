@@ -12,6 +12,7 @@ resource:
   # Article keys are their dated slug paths, e.g. 2026/09/18/openai-names-new-chief.
   path: /articles/{key}
   home: front
+  home_path: /
   assets: /static/media/{key}
   key: {strip: true}
   encode: {safe: /-}

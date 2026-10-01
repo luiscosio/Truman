@@ -55,14 +55,11 @@ class NewsSource:
         self.capture = Capture(root, site)
         self.cutoff = cutoff
 
-    def url(self, key):
-        return self.site.origin + ('/' if key == self.site.resource['home'] else self.site.path(key))
-
     def acquire(self, title=None, revision=None):
         if revision:
             raise ValueError('News articles have no public revisions')
         key = self.site.key(title)
-        url = self.url(key)
+        url = self.site.url(key)
         try:
             raw = self.capture.fetch(url)
         except FetchError as exc:

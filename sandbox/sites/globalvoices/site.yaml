@@ -13,6 +13,7 @@ resource:
   path: /{key}/
   pattern: '[0-9]{4}/[0-9]{2}/[0-9]{2}/[a-z0-9-]+'
   home: front
+  home_path: /
   assets: /wp-content/uploads/truman/{key}
   key: {strip: true, trim: /}
   encode: {safe: /-}

@@ -196,6 +196,8 @@ class Site:
         return quote(segment, safe=encode.get('safe', ''))
 
     def path(self, key):
+        if self.key(key) == self.resource['home'] and 'home_path' in self.resource:
+            return self.resource['home_path']
         return self.resource['path'].replace('{key}', self.encoded(key))
 
     def url(self, key):
