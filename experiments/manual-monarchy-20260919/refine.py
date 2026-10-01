@@ -1,3 +1,5 @@
+# Executed by edit.py inside its namespace, which supplies E, re, etree and link.
+# ruff: noqa: F821
 # Second editorial pass, included before publication; all source copies retained.
 import copy
 # Stable section IDs are presentation structure, not editable template payload.

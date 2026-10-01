@@ -210,7 +210,7 @@ evidence seal again. It tests only captured pages, not their uncaptured neighbor
 Large documents use a compact node encoding preserving every field; no article
 content is silently truncated to fit a context window.
 
-See [WORLD_MODEL_RESULTS.md](WORLD_MODEL_RESULTS.md) for the measured results and
+See [WORLD_MODEL_RESULTS.md](../results/WORLD_MODEL_RESULTS.md) for the measured results and
 remaining limitations. On this Mac, run commands from the external runtime checkout
 under `~/.local/share/truman/mac`; keep environments, audits and generated worlds
 there, outside Dropbox.
@@ -328,7 +328,7 @@ retained and must not be counted as successful agent or content evaluations.
 of the built-in `--task` names. These are target-agent inputs only; they never enter
 world compilation or rewriting. The prompt and URLs are recorded with the run and
 its experiment hash. Site access is still controlled by the managed profile.
-See [the counterfactual CEO fixture](examples/musk-openai-20260919/README.md).
+See [the counterfactual CEO fixture](../../experiments/musk-openai-20260919/README.md).
 
 ### Native Wikipedia source and revision metadata
 

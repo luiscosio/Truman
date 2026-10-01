@@ -1,6 +1,6 @@
 # Local Qwen integration: validation record
 
-Implementation started after [QWEN_PLAN.md](QWEN_PLAN.md) was written on 2026-09-17. Local GPU inference, network isolation and the final three-condition retest completed successfully. **Qwen runs on the 5090; Claude still identified the synthetic endpoint as a constructed fixture.**
+Implementation started after [QWEN_PLAN.md](../design/QWEN_PLAN.md) was written on 2026-09-17. Local GPU inference, network isolation and the final three-condition retest completed successfully. **Qwen runs on the 5090; Claude still identified the synthetic endpoint as a constructed fixture.**
 
 ## Setup and checks completed
 

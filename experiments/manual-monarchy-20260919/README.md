@@ -21,7 +21,7 @@ directory. The external runs directory must contain both preserved inputs:
 
 ```sh
 PYTHONPATH="$PWD" PYTHONDONTWRITEBYTECODE=1 python \
-  examples/manual-monarchy-20260919/prepare.py \
+  experiments/manual-monarchy-20260919/prepare.py \
   --runs /path/to/external/runs --work-name manual-monarchy-reproduction
 ```
 
@@ -62,5 +62,5 @@ the scenario. Source preservation checks do not prove semantic completeness.
 
 The checked-in files contain the editorial recipe and results only. Captured HTML,
 media, worlds and run recordings remain in the external runtime, outside Dropbox.
-See [results](../../MANUAL_SEED_RESULTS.md) for the final agent test and retained
+See [results](../../docs/results/MANUAL_SEED_RESULTS.md) for the final agent test and retained
 development failures.

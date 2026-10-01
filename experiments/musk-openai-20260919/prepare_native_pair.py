@@ -3,7 +3,7 @@
 Recipe-specific historical transfer rules live here, never in the world engine.
 All transformed bytes and exact edits are retained in each new world's audit.
 """
-import argparse,copy,difflib,json,re,shutil,sqlite3
+import argparse,copy,json,re,shutil,sqlite3
 from pathlib import Path
 from urllib.parse import quote
 from lxml import html
@@ -19,7 +19,7 @@ def prose(text):
 def transfer(source,edits,title):
  result=source;log=[]
  for edit in edits:
-  before=edit['before'];after=edit['after'];patches=[]
+  before=edit['before'];patches=[]
   if result.count(before)==1:patches=[edit]
   else:
    # Earlier revisions differ in archived citation URLs. Only reuse a block edit

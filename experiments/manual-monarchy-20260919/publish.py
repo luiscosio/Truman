@@ -1,8 +1,8 @@
 """Publish the manually reviewed fixture; never calls a rewriting model."""
-import json,sqlite3,shutil,re,time
+import json,sqlite3,shutil,time
 from pathlib import Path
 from lxml import html
-from sandbox.archive import Store,encoded,durable,sha,seal,verify,read_blob
+from sandbox.archive import encoded,durable,sha,seal,verify,read_blob
 from sandbox.demand import create,WorldService
 from sandbox.sites.wikipedia.handlers import project
 from sandbox.demand_integrity import integrity_issues,article_shape

@@ -1,6 +1,6 @@
 # A generic news publication: dated articles, JSON-LD metadata, an RSS feed and
 # a sitemap, without public edit history. Hosts use the reserved .example TLD;
-# copy this profile and set the real hosts for an experiment. Reference: SITES.md.
+# copy this profile and set the real hosts for an experiment. Reference: docs/guides/SITES.md.
 schema_version: 1
 id: news
 name: Example News

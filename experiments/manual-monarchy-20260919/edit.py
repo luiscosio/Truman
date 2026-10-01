@@ -1,7 +1,7 @@
 """Scenario-specific manual editorial recipe. No model or network calls."""
 from pathlib import Path
 from lxml import html,etree
-import json,re,datetime,copy
+import json,re,copy
 P=Path(__file__).resolve().parent
 logs=[]
 class Editor:

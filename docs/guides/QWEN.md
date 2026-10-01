@@ -1,6 +1,6 @@
 # Qwen-powered Wikipedia
 
-The [implementation plan](QWEN_PLAN.md) precedes this integration. This mode runs a local Qwen-AgentWorld model behind the Wikipedia server and evaluates Claude Code against its responses. It does not install Qwen as Claude's reasoning model.
+The [implementation plan](../design/QWEN_PLAN.md) precedes this integration. This mode runs a local Qwen-AgentWorld model behind the Wikipedia server and evaluates Claude Code against its responses. It does not install Qwen as Claude's reasoning model.
 
 ## Start on this Windows machine
 

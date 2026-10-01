@@ -21,7 +21,7 @@ PYTHONDONTWRITEBYTECODE=1 python tools/trace-video/trace_video.py \
   --style abstract --story /path/to/my-short-story.json
 ```
 
-Use [the 52-second example](../../examples/manual-monarchy-20260919/video-short-story.json)
+Use [the 52-second example](../../experiments/manual-monarchy-20260919/video-short-story.json)
 as a starting point. Each beat has a kind, a short `text`, duration and source event
 IDs. Supported kinds are `question`, `fetch`, `reaction`, `pair`, `agreement`,
 `conflict`, `answer`, `intro` and `verdict`. Page cards reference automatically grouped scene keys
@@ -68,7 +68,7 @@ audio track. Fonts use Arial on macOS/Windows or DejaVu Sans on Linux.
 For the manually prepared monarchy run, add:
 
 ```sh
---story examples/manual-monarchy-20260919/video-story.json
+--story experiments/manual-monarchy-20260919/video-story.json
 ```
 
 The source run must contain `run.json` and its original response blobs. Image

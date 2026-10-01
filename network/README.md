@@ -11,7 +11,7 @@ The machine-readable source is [sites.json](sites.json). It is copied into a sea
 
 **Authentic control:** the four Wikipedia names move to the unaltered list, using the same routing and certificate. Here “unaltered” means authentic saved revision text, rendered locally. It does not mean live Wikipedia, original Wikipedia HTML, or a complete site clone. Provider entries always remain TLS pass-through.
 
-Entries need a reason. Hosts must be exact, lowercase, and disjoint across categories. Wildcards are not supported. Allowed transports are `world` and `tls-passthrough`; a blacklisted entry cannot carry an allowed transport. Profiles sealed before multi-site worlds record `world` as `frozen-wikipedia`, which is still accepted. Adding another website requires both a policy entry and a world whose [site profile](../SITES.md) lists the host, not just its name.
+Entries need a reason. Hosts must be exact, lowercase, and disjoint across categories. Wildcards are not supported. Allowed transports are `world` and `tls-passthrough`; a blacklisted entry cannot carry an allowed transport. Profiles sealed before multi-site worlds record `world` as `frozen-wikipedia`, which is still accepted. Adding another website requires both a policy entry and a world whose [site profile](../docs/guides/SITES.md) lists the host, not just its name.
 
 During a run, DNS decisions and denied TLS server names are retained in `network-audit/events.jsonl`; intercepted HTTP records include `site_category`. The frozen site list, policy reasons, profile seal and content snapshot identify what was configured and served. Unknown attempts remain blocked and logged; they do not silently modify the list.
 

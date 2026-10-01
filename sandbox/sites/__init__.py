@@ -4,7 +4,7 @@ Each simulated website is a package under sandbox/sites/<id>/ with a site.yaml
 profile and an optional handlers module. The profile holds every site convention
 (hosts, routes, parameters, error responses, content selectors, link rules,
 resource keys and version metadata). Shared world code asks the Site object and
-never hardcodes a particular website. See SITES.md for the profile reference.
+never hardcodes a particular website. See docs/guides/SITES.md for the profile reference.
 """
 import functools
 import hashlib

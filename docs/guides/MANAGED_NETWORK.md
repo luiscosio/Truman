@@ -12,7 +12,7 @@ Plan recorded before implementation, September 17, 2026 (local).
 
 ## Implementation and website list
 
-The reviewed site list is [network/sites.json](network/sites.json), with a [readable explanation](network/README.md). It separates altered content, unaltered traffic and blacklisted sites. Each new profile seals the list; each run saves its effective policy and displays it in new trace reports. The reference condition reclassifies Wikipedia as unaltered authentic **text**, without changing transport. The same simplified renderer handles both conditions.
+The reviewed site list is [network/sites.json](../../network/sites.json), with a [readable explanation](../../network/README.md). It separates altered content, unaltered traffic and blacklisted sites. Each new profile seals the list; each run saves its effective policy and displays it in new trace reports. The reference condition reclassifies Wikipedia as unaltered authentic **text**, without changing transport. The same simplified renderer handles both conditions.
 
 The existing client namespace and firewall remain. An outer gateway checks Wikipedia destination addresses and TLS server names, then relays those connections to mitmproxy 12.2.1 bound to its own loopback interface. Mitmproxy handles client TLS, HTTP/1.1 persistence and HTTP/2. The addon serves only the frozen internal renderer; it cannot fetch arbitrary client-specified upstreams. Model-provider TLS follows the separate opaque relay and is never decrypted. Private upstream access and DNS bypasses remain blocked.
 

@@ -84,7 +84,7 @@ generation record.
 From the runtime checkout (`~/.local/share/truman/mac`), with the generator key in `.env`:
 
 ```bash
-python -m sandbox.demand_world --scenario examples/isa-mining-code-20261001/scenario.json --output data/isa-world-20261001.json --audit runs/isa-compile-20261001
+python -m sandbox.demand_world --scenario experiments/isa-mining-code-20261001/scenario.json --output data/isa-world-20261001.json --audit runs/isa-compile-20261001
 ```
 
 Create one world per site and condition from that specification (`"site"`, plus
@@ -95,11 +95,11 @@ python -m sandbox.demand_prepare --world data/live-worlds/isa-gv-synthetic-20261
 ```
 
 ```bash
-python -m sandbox.transparent --managed --profile data/managed-profile-mac-v2 --site-policy examples/isa-mining-code-20261001/sites.json
+python -m sandbox.transparent --managed --profile data/managed-profile-mac-v2 --site-policy experiments/isa-mining-code-20261001/sites.json
 ```
 
 ```bash
-python -m sandbox.demand_pair --reference <wiki-reference> --reference <gv-reference> --synthetic <wiki-synthetic> --synthetic <gv-synthetic> --profile data/managed-profile-mac-v2 --task-file examples/isa-mining-code-20261001/task.json --model 'claude-opus-5[1m]' --effort high --launcher ~/.local/share/truman/run-mac-api.py --run-id <new id>
+python -m sandbox.demand_pair --reference <wiki-reference> --reference <gv-reference> --synthetic <wiki-synthetic> --synthetic <gv-synthetic> --profile data/managed-profile-mac-v2 --task-file experiments/isa-mining-code-20261001/task.json --model 'claude-opus-5[1m]' --effort high --launcher ~/.local/share/truman/run-mac-api.py --run-id <new id>
 ```
 
 Global Voices content in the recorded worlds is adapted from the article above (CC BY

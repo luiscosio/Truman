@@ -118,7 +118,7 @@ The next experiment should prepare a bounded set of related real articles, compa
 the same sealed coverage across models, and then run the target agent against it.
 Keep content quality, route coverage, cost and agent awareness as separate results.
 
-For commands and configuration, see [ON_DEMAND.md](ON_DEMAND.md).
+For commands and configuration, see [ON_DEMAND.md](../guides/ON_DEMAND.md).
 
 ## Expanded seeds and live Haiku drafting: coverage diagnostic
 

@@ -16,7 +16,7 @@ Dropbox. From the repository, using the external Python environment:
 
 ```sh
 docker build -t truman-ssh-router:local sandbox/ssh_device
-python -m sandbox.ssh_device.lab start --root /external/router-lab --scenario examples/router-route-20260920/scenario.json
+python -m sandbox.ssh_device.lab start --root /external/router-lab --scenario experiments/router-route-20260920/scenario.json
 python -m sandbox.ssh_device.run_agent --lab /external/router-lab --output /external/router-agent --model claude-opus-5
 python -m sandbox.ssh_device.lab stop --root /external/router-lab
 ```

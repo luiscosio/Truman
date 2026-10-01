@@ -19,7 +19,7 @@ and all intermediate frozen worlds remain preserved.
   parse wikitext and raw representation for each page.
 - All **12 distinct request paths** from the original diagnostic run return HTTP
   200 when replayed against the final world.
-- The checked-in [editorial recipe](examples/manual-monarchy-20260919/README.md)
+- The checked-in [editorial recipe](../../experiments/manual-monarchy-20260919/README.md)
   reproduces all nine candidate files byte for byte from pinned captured sources.
 - Focused checks confirm current regnal dates, updated contents labels, corrected
   incumbent portrait links and captured Elizabeth-era royal arms.
@@ -96,7 +96,7 @@ recording is `runs/mac-manual-seeds-agent-20260919-v6/`.
 | Final agent recording | `9a4ecbfb6ef1c07c00e246bf3b187070039bd29b6548e7bcbddf59b4115a35b6` |
 | Original diagnostic, unchanged | `ebeeab471f965af0fc3924ed508bfe1a619f30806fe21555a6cac85950d56c78` |
 
-[Machine-readable results](examples/manual-monarchy-20260919/results.json) include
+[Machine-readable results](../../experiments/manual-monarchy-20260919/results.json) include
 the original source seal, every development recording seal, request timings and
 event references. The full originals, edited pages and manual-review records are
 stored with the frozen world. Recordings were not edited to add these conclusions.

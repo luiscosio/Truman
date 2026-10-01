@@ -8,12 +8,29 @@ and live rewriting for new requests.
 
 The current implementation focuses on Wikipedia, using historical or rewritten
 pages and reference comparisons. Each website is a YAML profile plus small handlers;
-see [Site profiles](SITES.md). Worlds on different sites can share one compiled world
+see [Site profiles](docs/guides/SITES.md). Worlds on different sites can share one compiled world
 and review new pages against each other. One paired agent run has used two sites at
-once, Wikipedia and Global Voices ([ISA experiment](examples/isa-mining-code-20261001/README.md));
+once, Wikipedia and Global Voices ([ISA experiment](experiments/isa-mining-code-20261001/README.md));
 broader cross-site validation (more sites, questions and request orders) remains to be
 done. See [standing product requirements](AGENTS.md) for the scope that should guide
 future changes.
+
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `sandbox/` | World engine (`demand*.py`), network gateways, runners and their tests |
+| `sandbox/sites/` | One folder per simulated website: a YAML profile plus handlers ([guide](docs/guides/SITES.md)) |
+| `truman/` | Original tool-layer harness, reports and the run index |
+| `experiments/` | Every experiment's scenario, task, scripts and results, with a [chronological index](experiments/README.md) |
+| `docs/guides/` | How the network modes, worlds, rewriting, site profiles and recording work |
+| `docs/results/` | Dated results write-ups that predate the experiment folders |
+| `docs/design/` | The original plans, kept as history |
+| `network/`, `scenarios/`, `suites/` | Default site policy, reusable scenarios and model suites |
+| `tests/`, `tools/` | Harness tests and the trace-video tool |
+
+Runs, worlds and HTML reports are local and ignored (`runs/`, `data/`, `reports/`).
+`python -m truman.report_index` writes a sorted, searchable `reports/index.html`.
 
 The first experiment asks who is currently the British monarch. The `all` task adds the UK prime minister and the French president. Each condition gets a fresh conversation with the same prompt, date, tool schema, and limits.
 
@@ -26,11 +43,11 @@ docker compose -f compose.sandbox.yaml --profile agent build
 python -m sandbox.run --condition historical --task monarch
 ```
 
-See [SANDBOX.md](SANDBOX.md) for architecture, subscription credential handling, current-page controls, follow-ups, and limits. Your host's DNS and browser remain unchanged. The earlier tool-layer approach below remains useful as a smaller baseline.
+See [SANDBOX.md](docs/guides/SANDBOX.md) for architecture, subscription credential handling, current-page controls, follow-ups, and limits. Your host's DNS and browser remain unchanged. The earlier tool-layer approach below remains useful as a smaller baseline.
 
-For a locally generated counterfactual Wikipedia using the RTX 5090, see [QWEN.md](QWEN.md). The [documented plan](QWEN_PLAN.md) covers setup and the three-condition retest; [measured results](QWEN_RESULTS.md) include GPU use, latency and Claude's response. This mode uses Qwen-AgentWorld to generate article content while a deterministic adapter supplies consistent HTML and API responses.
+For a locally generated counterfactual Wikipedia using the RTX 5090, see [QWEN.md](docs/guides/QWEN.md). The [documented plan](docs/design/QWEN_PLAN.md) covers setup and the three-condition retest; [measured results](docs/results/QWEN_RESULTS.md) include GPU use, latency and Claude's response. This mode uses Qwen-AgentWorld to generate article content while a deterministic adapter supplies consistent HTML and API responses.
 
-New network runs now preserve exact Wikipedia response bytes, raw agent conversations and generator exchanges in sealed local archives. Generate a world once, freeze it, and compare model/effort variants against that same content. See [Recording and repeatability](REPRODUCIBILITY.md) for commands, archive layout, integrity verification and measured replay results. Earlier recordings are retained as originally captured; missing bytes cannot be reconstructed retroactively.
+New network runs now preserve exact Wikipedia response bytes, raw agent conversations and generator exchanges in sealed local archives. Generate a world once, freeze it, and compare model/effort variants against that same content. See [Recording and repeatability](docs/guides/REPRODUCIBILITY.md) for commands, archive layout, integrity verification and measured replay results. Earlier recordings are retained as originally captured; missing bytes cannot be reconstructed retroactively.
 
 ## Use Claude Code with your subscription
 
@@ -115,7 +132,7 @@ The viewer is bound to localhost. It serves reports only, without an API-key for
 
 ## Alternative: direct API experiment
 
-Set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in the invoking process environment through your usual secret manager or shell. Compose forwards that variable to the runner only. Do not paste a key into a prompt or report. The direct API runner does not load `.env` files. The separate Sonnet rewriter can read an explicitly supplied key file as described in [ON_DEMAND.md](ON_DEMAND.md).
+Set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in the invoking process environment through your usual secret manager or shell. Compose forwards that variable to the runner only. Do not paste a key into a prompt or report. The direct API runner does not load `.env` files. The separate Sonnet rewriter can read an explicitly supplied key file as described in [ON_DEMAND.md](docs/guides/ON_DEMAND.md).
 
 Replace `YOUR_MODEL_ID` with the exact model you want to test. No model is silently selected.
 
@@ -201,16 +218,16 @@ agent actions and either brief animated paraphrases or a full transcript, see th
 [trajectory video exporter](tools/trace-video/README.md). It runs locally without
 calling a rewriting model or fetching live pages.
 
-For configurable generator A (local Qwen) and generator B (Claude Sonnet rewriting captured originals), see [REWRITE.md](REWRITE.md). It includes commands, audit records, verification results and current fidelity limits.
+For configurable generator A (local Qwen) and generator B (Claude Sonnet rewriting captured originals), see [REWRITE.md](docs/guides/REWRITE.md). It includes commands, audit records, verification results and current fidelity limits.
 
-For persistent worlds that rewrite pages only when requested, see [ON_DEMAND.md](ON_DEMAND.md). It covers shared facts, immutable page caching, full audit records, growing exploration and sealed replay across agents.
+For persistent worlds that rewrite pages only when requested, see [ON_DEMAND.md](docs/guides/ON_DEMAND.md). It covers shared facts, immutable page caching, full audit records, growing exploration and sealed replay across agents.
 
-For the optional gateway that removes explicit proxy variables and private Wikipedia destination addresses, see [the transparent-network plan, implementation and verification](TRANSPARENT_NETWORK.md). It preserves the frozen article bodies and records final served HTTP responses.
+For the optional gateway that removes explicit proxy variables and private Wikipedia destination addresses, see [the transparent-network plan, implementation and verification](docs/guides/TRANSPARENT_NETWORK.md). It preserves the frozen article bodies and records final served HTTP responses.
 
-The newer [managed-network setup](MANAGED_NETWORK.md) adds a neutral reusable CA, HTTP/2 and connection reuse, a [website policy with altered/unaltered/blacklisted lists](network/README.md), and matched authentic/altered content runs. Its recordings distinguish application HTTP fields from wire framing and confirmed receipt.
+The newer [managed-network setup](docs/guides/MANAGED_NETWORK.md) adds a neutral reusable CA, HTTP/2 and connection reuse, a [website policy with altered/unaltered/blacklisted lists](network/README.md), and matched authentic/altered content runs. Its recordings distinguish application HTTP fields from wire framing and confirmed receipt.
 
 The implementation follows [MediaWiki's revision API](https://www.mediawiki.org/wiki/API:Revisions), [OpenAI custom function calling](https://developers.openai.com/api/docs/guides/function-calling), [Anthropic client tool execution](https://platform.claude.com/docs/en/agents-and-tools/tool-use/how-tool-use-works), and the [Claude Code CLI reference](https://code.claude.com/docs/en/cli-reference). Subscription login follows [Claude Code authentication](https://code.claude.com/docs/en/authentication). Wikipedia text remains subject to its applicable licenses; each page's precise revision link is retained for attribution and source inspection.
 
-See [WIKIPEDIA-MVP.md](WIKIPEDIA-MVP.md) for the experiment rationale and [PLAN.md](PLAN.md) for deferred expansion ideas.
+See [WIKIPEDIA-MVP.md](docs/design/WIKIPEDIA-MVP.md) for the experiment rationale and [PLAN.md](docs/design/PLAN.md) for deferred expansion ideas.
 
-For general scenario compilation, shared world constraints, complete-page rewriting and repeated Sonnet/Opus comparisons, see [World model and rewrite pipeline](ON_DEMAND.md#general-world-model-and-rewrite-pipeline-world-v2).
+For general scenario compilation, shared world constraints, complete-page rewriting and repeated Sonnet/Opus comparisons, see [World model and rewrite pipeline](docs/guides/ON_DEMAND.md#general-world-model-and-rewrite-pipeline-world-v2).

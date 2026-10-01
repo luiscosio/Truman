@@ -14,7 +14,7 @@ profiles: sources and hooks receive the profile that uses them. Three profiles e
 | Profile | Status |
 | --- | --- |
 | `wikipedia` | English Wikipedia. Used by every recorded experiment. A refactor into this profile reproduced 1,550 recorded responses from five frozen worlds byte for byte (`python -m sandbox.route_golden`). |
-| `globalvoices` | Global Voices, a real news site (articles under CC BY 3.0), using the shared news handlers. Captured live and served to an agent alongside Wikipedia in [the ISA experiment](examples/isa-mining-code-20261001/README.md). |
+| `globalvoices` | Global Voices, a real news site (articles under CC BY 3.0), using the shared news handlers. Captured live and served to an agent alongside Wikipedia in [the ISA experiment](../../experiments/isa-mining-code-20261001/README.md). |
 | `news` | A template for news publications on reserved `.example` hosts, with JSON-LD metadata. Covered by offline fixture tests; copy it for a new publication. |
 
 ## Choosing a site
@@ -167,7 +167,7 @@ python -m sandbox.demand_prepare --world <news world> --link <wikipedia world> -
 ## Running sites in the managed network
 
 1. Write a site policy listing every simulated host with `"transport": "world"` (see
-   `examples/isa-mining-code-20261001/sites.json`). Prepare a network profile from it:
+   `experiments/isa-mining-code-20261001/sites.json`). Prepare a network profile from it:
    DNS answers are pinned for every listed host and the server certificate names every
    world host.
 

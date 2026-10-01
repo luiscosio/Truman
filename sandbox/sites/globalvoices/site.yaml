@@ -1,6 +1,6 @@
 # Global Voices (globalvoices.org), English edition. A WordPress news site whose
 # articles are published under Creative Commons Attribution 3.0; attribute them
-# when sharing derived fixtures. Uses the shared news handlers. Reference: SITES.md.
+# when sharing derived fixtures. Uses the shared news handlers. Reference: docs/guides/SITES.md.
 schema_version: 1
 id: globalvoices
 name: Global Voices
