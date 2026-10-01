@@ -97,16 +97,19 @@ class Capture:
         return "data:" + mime + ";base64," + base64.b64encode(raw).decode()
 
     def image(self, url):
-        """An inlined image, or its original absolute URL when it exceeds the capture budget.
+        """An inlined image, or its original absolute URL when it cannot be captured.
 
-        The live page references its images remotely too; one oversized animation
-        must not fail the whole page. Every such case is recorded.
+        The live page references its images remotely too, and a browser there
+        would also miss an image the server refuses. One oversized or throttled
+        image must not fail the whole page. Every such case is recorded.
         """
         try:
             return self.asset(url)
         except TooLarge:
             self.store.event('asset_not_inlined', url=url, reason='over capture budget')
-            return url
+        except FetchError as exc:
+            self.store.event('asset_not_inlined', url=url, reason='fetch failed', status=exc.status)
+        return url
 
     def css(self, url):
         css = self.fetch(url).decode()

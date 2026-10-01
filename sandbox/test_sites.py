@@ -255,16 +255,18 @@ class NasaScienceTests(unittest.TestCase):
         self.assertEqual(fetched, ['https://en.wikipedia.org/style.css', 'https://en.wikipedia.org/icon.png'])
         self.assertIn('@namespace m url(http://www.w3.org/1998/Math/MathML)', css)
 
-    def test_an_oversized_image_keeps_its_original_url_instead_of_failing_the_page(self):
+    def test_an_image_that_cannot_be_captured_keeps_its_original_url(self):
         from sandbox.archive import journal
-        from sandbox.rewrite_capture import Capture, TooLarge
+        from sandbox.rewrite_capture import Capture, FetchError, TooLarge
 
         def fetch(capture, url):
             if url.endswith('big.gif'):
                 raise TooLarge('Capture body too large')
+            if url.endswith('throttled.gif'):
+                raise FetchError(url, 22, 429)
             return b'png'
         page = (b'<html><body><div class="mw-parser-output"><p>Text</p><img src="//upload.wikimedia.org/big.gif">'
-                b'<img src="/small.png"></div></body></html>')
+                b'<img src="/small.png"><img src="//upload.wikimedia.org/throttled.gif"></div></body></html>')
         with tempfile.TemporaryDirectory() as temp, patch.object(Capture, 'fetch', fetch):
             capture = Capture(Path(temp), load('wikipedia'))
             document, assets = capture.offline(page, 'https://en.wikipedia.org/wiki/Pluto')
@@ -272,7 +274,9 @@ class NasaScienceTests(unittest.TestCase):
         sources = html.fromstring(document).xpath('//img/@src')
         self.assertEqual(sources[0], 'https://upload.wikimedia.org/big.gif')
         self.assertTrue(sources[1].startswith('data:image/png'))
-        self.assertEqual([e['url'] for e in events], ['https://upload.wikimedia.org/big.gif'])
+        self.assertEqual(sources[2], 'https://upload.wikimedia.org/throttled.gif')
+        self.assertEqual(sorted((e['url'], e.get('status')) for e in events),
+                         [('https://upload.wikimedia.org/big.gif', None), ('https://upload.wikimedia.org/throttled.gif', 429)])
 
     def test_oversized_images_are_refetched_resized_only_when_the_profile_allows(self):
         from sandbox.rewrite_capture import Capture, TooLarge
