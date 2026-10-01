@@ -94,7 +94,7 @@ class FrozenHTTP:
             internal={k.lower():v for k,v in flow.metadata.get('origin_headers',[])}
             replay=internal.get('x-world-coverage','error')
             if internal.get('x-world-evidence'):proof=json.loads(base64.b64decode(internal['x-world-evidence']))
-        if response.status_code >= 500 and replay != 'generation_failed':
+        if response.status_code >= 500 and replay not in ('generation_failed', 'outside_snapshot'):
             replay = "error"
         elif route and (sha(body) != route["representation_blob"] or response.status_code != route["status"]):
             raise ValueError("Frozen route returned different content")

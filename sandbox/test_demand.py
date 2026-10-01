@@ -29,7 +29,7 @@ class Source:
         return {'title':'Monarchy' if title=='Alias' else title,'page_id':42,
                 'record':{'revid':revision or 5,'timestamp':'2026-09-17T12:34:56Z','parentid':4,'user':'Editor','comment':'edit'},
                 'source':'original wiki','document':DOCUMENT}
-    def history(self,title,limit):return [{'revid':5-i} for i in range(limit)]
+    def history(self,title,limit):return [{'revid':5-i,'timestamp':'2026-09-17T12:%02d:00Z'%(59-i)} for i in range(limit)]
     def search(self,query,limit):return [{'title':'Monarchy'}]
     def api(self,**kwargs):return {'query':{'pages':[{'title':'Monarchy','revisions':[{'revid':4,'timestamp':'2026-09-16T00:00:00Z'}]}]}}
 
@@ -89,14 +89,69 @@ class DemandTests(unittest.TestCase):
         self.assertEqual(self.world.handle('/w/api.php?action=delete&titles=Monarchy')['coverage'],'outside_snapshot')
         self.assertEqual(len(Source.calls),1)
 
-    def test_malformed_revision_is_not_misreported_as_failed_generation(self):
-        for path in ('/w/index.php?oldid=&action=raw',
-                     '/w/api.php?action=query&revids=undefined',
-                     '/w/api.php?action=compare&fromrev=-1&torev=5'):
+    def test_invalid_api_parameters_use_the_mediawiki_error_envelope(self):
+        for path,code in (('/w/api.php?action=query&revids=undefined','badinteger'),
+                          ('/w/api.php?action=compare&fromrev=-1&torev=5','nosuchrevid'),
+                          ('/w/api.php?action=query&list=search&srsearch=x&srlimit=ten','badinteger'),
+                          ('/w/api.php?action=query&titles=Monarchy&prop=revisions&rvlimit=abc','badinteger'),
+                          ('/w/api.php?action=query&titles=Monarchy&prop=revisions&rvstart=garbage','badtimestamp'),
+                          ('/w/api.php?action=query&titles=Monarchy&prop=revisions&rvlimit=2&rvdir=sideways','badvalue'),
+                          ('/w/api.php?action=query&titles=Monarchy|Other&prop=revisions&rvlimit=2','invalidparammix')):
             response=self.world.handle(path)
-            self.assertEqual(response['status'],400)
-            self.assertEqual(response['coverage'],'invalid_request')
-        self.assertFalse(Source.calls)
+            self.assertEqual((response['status'],response['coverage'],response['headers']),(200,'invalid_request',{'MediaWiki-API-Error':code}),path)
+            self.assertEqual(json.loads(self.body(response))['error']['code'],code)
+
+    def test_blank_oldid_and_unparsable_page_limits_behave_like_mediawiki(self):
+        raw=self.world.handle('/w/index.php?title=Monarchy&oldid=&action=raw')
+        self.assertEqual(raw['status'],200);self.assertIn(b'Elizabeth II',self.body(raw))
+        self.assertEqual(self.world.handle('/w/index.php?title=Monarchy&action=history&limit=abc')['status'],200)
+
+    def test_coverage_miss_is_a_generic_outage_with_an_internal_reason(self):
+        response=self.world.handle('/w/api.php?action=delete&titles=Monarchy')
+        self.assertEqual((response['status'],response['mime'],response['coverage']),(503,'text/html; charset=utf-8','outside_snapshot'))
+        self.assertIn(b'Wikimedia Error',self.body(response));self.assertEqual(response['evidence'],{'reason':'Unsupported API action'})
+
+    def test_revision_enumeration_filters_and_continues_within_the_window(self):
+        def history(self,title,limit):
+            return [{'revid':100-i,'parentid':99-i,'timestamp':'2026-%02d-%02dT00:00:00Z'%(9-i//28,28-i%28),'user':'','comment':''}
+                    for i in range(min(limit,60))]
+        def revids(path):
+            data=json.loads(self.body(self.world.handle(path)))
+            return [r['revid'] for r in data['query']['pages']['42']['revisions']],data.get('continue',{}).get('rvcontinue')
+        base='/w/api.php?action=query&titles=Monarchy&prop=revisions&rvprop=ids|timestamp'
+        with patch.object(Source,'history',history):
+            first,token=revids(base+'&rvlimit=3')
+            self.assertEqual((first,token),([100,99,98],'20260925000000|97'))
+            self.assertEqual(revids(base+'&rvlimit=3&rvcontinue='+token)[0],[97,96,95])
+            self.assertEqual(revids(base+'&rvlimit=2&rvstart=2026-09-20T00:00:00Z')[0],[92,91])
+            self.assertEqual(revids(base+'&rvlimit=2&rvdir=newer&rvstartid=60')[0],[60,61])
+            self.assertEqual(revids(base+'&rvdir=older&rvend=2026-09-26T00:00:00Z&rvlimit=50')[0],[100,99,98])
+            queries=[]
+            def api(self,**query):
+                queries.append(query)
+                return {'query':{'pages':[{'title':'Monarchy','revisions':[{'revid':3,'timestamp':'2001-01-01T00:00:00Z'},{'revid':7,'timestamp':'2001-01-02T00:00:00Z'},
+                                                                           {'revid':9,'timestamp':'2001-01-03T00:00:00Z'}]}]}}
+            with patch.object(Source,'api',api,create=True):
+                self.assertEqual(revids(base+'&rvdir=newer&rvlimit=2'),([3,7],'20010103000000|9'))
+            self.assertEqual({k:queries[0][k] for k in ('rvdir','rvlimit','rvend')},{'rvdir':'newer','rvlimit':3,'rvend':'2026-09-18T23:59:59Z'})
+            self.assertNotIn('content',queries[0]['rvprop'])
+            frozen=self.root.parent/'enumeration-frozen';self.world.freeze(frozen);snapshot=WorldService(frozen)
+            try:
+                beyond=snapshot.handle(base+'&rvdir=newer&rvlimit=2&rvstartid=1')
+                self.assertEqual((beyond['status'],beyond['coverage']),(503,'outside_snapshot'))
+                self.assertEqual(json.loads(base64.b64decode(snapshot.handle(base+'&rvlimit=2')['body_base64']))['query']['pages']['42']['revisions'][0]['revid'],100)
+            finally:snapshot.close()
+
+    def test_preserved_history_hides_unreviewed_comments(self):
+        self.world.close()
+        scenario={**SCENARIO,'id':'preserve','wikipedia':{'revision_metadata':'preserve'}}
+        root=self.root.parent/'preserve';create(root,scenario,'sha256:test')
+        upstream=lambda self,title,limit:[{'revid':5-i,'timestamp':'2026-09-17T00:00:00Z','user':'Editor','comment':'upstream '+str(i)} for i in range(limit)]
+        history=patch.object(Source,'history',upstream);history.start();self.addCleanup(history.stop)
+        self.world=WorldService(root,Source,writer)
+        self.world.ensure('Monarchy')
+        rows=self.world.history_metadata('Monarchy',2)
+        self.assertEqual([(r['revid'],r['user'],r['comment']) for r in rows],[(5,'Editor','edit'),(4,'Editor','')])
 
     def test_freeze_is_immutable_and_never_generates(self):
         original=self.world.handle('/wiki/Monarchy')

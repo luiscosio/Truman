@@ -1,28 +1,102 @@
 """One read adapter for growing and frozen worlds; no direct network access here."""
+import datetime as dt
 import difflib
 import hashlib
 import json
+import re
 from urllib.parse import parse_qs, unquote, urlsplit
 from lxml import html, etree
 from sandbox.rewrite_capture import CONTENT
 from truman.world import wiki_url
 
 
-class InvalidRequest(ValueError):pass
+class InvalidRequest(ValueError):
+    """A request MediaWiki itself rejects, answered with its own API error code."""
+    def __init__(self,code,info):super().__init__(info);self.code=code
+
+
+DOCREF=('See https://en.wikipedia.org/w/api.php for API usage. Subscribe to the mediawiki-api-announce mailing list at '
+        '&lt;https://lists.wikimedia.org/postorius/lists/mediawiki-api-announce.lists.wikimedia.org/&gt; '
+        'for notice of API deprecations and breaking changes.')
+# One transient-outage page for every surface. Misses and failed generations must
+# not have a bespoke status or body; the precise reason stays in the evidence.
+OUTAGE=(b'<!DOCTYPE html>\n<html lang="en">\n<meta charset="utf-8">\n<title>Wikimedia Error</title>\n'
+        b'<style>*{margin:0;padding:0}body{background:#fff;font:15px/1.6 sans-serif;color:#333}'
+        b'.content{margin:7% auto 0;padding:2em 1em 1em;max-width:640px}h1{font-size:2em;font-weight:normal;margin-bottom:.5em}'
+        b'p{margin-top:1em}.footer{padding:0 1em;max-width:640px;margin:0 auto;color:#555;font-size:.9em}</style>\n'
+        b'<div class="content" role="main">\n<h1>Error</h1>\n<p>Our servers are currently under maintenance or experiencing a '
+        b'technical issue. Please <a href="" title="Reload this page" onclick="window.location.reload(false); return false">try again</a> '
+        b'in a few minutes.</p>\n</div>\n<div class="footer"><p>If you report this error to the Wikimedia System Administrators, '
+        b'please include the details below.</p><p><code>Error: 503, Service Unavailable</code></p></div>\n</html>\n')
+
+
+def outage(coverage,reason):
+    return 503,'text/html; charset=utf-8',OUTAGE,{},coverage,{'reason':reason}
 
 
 def respond(world,target):
     from sandbox.demand import CoverageMiss, NeedsGeneration
     parts=urlsplit(target);q=parse_qs(parts.query,keep_blank_values=True)
     def param(name,default=''):return q.get(name,[default])[0]
-    def revision_id(value):
-        if not value.isascii() or not value.isdigit() or int(value)<1:
-            raise InvalidRequest('A positive revision ID is required.')
+    def stamp(value):return int(re.sub(r'[^0-9]','',value))
+    def integer(name,value):
+        if not re.fullmatch(r'[+-]?[0-9]+',value):raise InvalidRequest('badinteger','Invalid value "'+value+'" for integer parameter "'+name+'".')
         return int(value)
-    def number(name,default,cap):
-        raw=param(name,str(default));value=cap if raw=='max' else int(raw)
-        if not 1<=value<=cap:raise CoverageMiss('Requested limit exceeds supported budget')
-        return value
+    def revision_id(name,value):
+        number=integer(name,value)
+        if number<1:raise InvalidRequest('nosuchrevid','There is no revision with ID '+str(number)+'.')
+        return number
+    def number(name,default,cap,api=True):
+        # MediaWiki clamps out-of-range limits; index.php ignores unparsable ones.
+        raw=param(name,str(default))
+        if raw=='max':return cap
+        if not api and not re.fullmatch(r'[0-9]+',raw):return default
+        return min(max(integer(name,raw),1),cap)
+    def timestamp(name):
+        raw=param(name)
+        try:
+            value=dt.datetime.strptime(raw,'%Y%m%d%H%M%S') if re.fullmatch(r'[0-9]{14}',raw) else dt.datetime.fromisoformat(raw.replace('Z','+00:00'))
+            if value.tzinfo:value=value.astimezone(dt.timezone.utc)
+            return value.strftime('%Y-%m-%dT%H:%M:%SZ')
+        except ValueError:raise InvalidRequest('badtimestamp','Invalid value "'+raw+'" for timestamp parameter "'+name+'".')
+    def enumerate_revisions(article):
+        """rvdir/rvstart/rvend/rvstartid/rvendid/rvcontinue over the widest known history window."""
+        direction=param('rvdir','older')
+        if direction not in ('older','newer'):raise InvalidRequest('badvalue','Unrecognized value for parameter "rvdir": '+direction+'.')
+        older=direction=='older';count=number('rvlimit',10,50)
+        start=timestamp('rvstart') if param('rvstart') else None;end=timestamp('rvend') if param('rvend') else None
+        startid=integer('rvstartid',param('rvstartid')) if param('rvstartid') else None
+        endid=integer('rvendid',param('rvendid')) if param('rvendid') else None
+        try:records,complete=world.history_window(article['title'])
+        except CoverageMiss:
+            # Without a prepared window, the newest revision is still known.
+            if not (older and count==1 and start is None and startid is None and not param('rvcontinue')):raise
+            records,complete=[dict(article['record'])],True
+        for newer,parent in zip(records,records[1:]):newer.setdefault('parentid',parent['revid'])
+        def sign(value):return value if older else -value
+        def reached(r):return (start is None or sign(stamp(r['timestamp']))<=sign(stamp(start))) and (startid is None or sign(r['revid'])<=sign(startid))
+        def within(r):return (end is None or sign(stamp(r['timestamp']))>=sign(stamp(end))) and (endid is None or sign(r['revid'])>=sign(endid))
+        ordered=records if older else records[::-1]
+        selected=[r for r in ordered if reached(r) and within(r)]
+        token=param('rvcontinue').rpartition('|')[2];ids=[str(r['revid']) for r in selected]
+        if param('rvcontinue') and token in ids:selected=selected[ids.index(token):]
+        # The window may stop before the first revision. Newer-first ranges must start
+        # inside it; older-first ranges must end inside it or already fill the limit.
+        if (param('rvcontinue') and token not in ids) or (not complete and ordered and (
+                (not older and reached(ordered[0])) or (older and within(ordered[-1]) and len(selected)<count))):
+            if complete or not ordered:raise InvalidRequest('badcontinue','Invalid continue param. You should pass the original value returned by the previous query.')
+            cutoff=world.config['source_cutoff']
+            params={'rvdir':direction,'rvlimit':count+1}
+            if older:params['rvstart']=min(start or cutoff,cutoff)
+            else:params['rvend']=min(end or cutoff,cutoff)
+            for name,value in (('rvend',end if older else None),('rvstart',None if older else start),
+                               ('rvstartid',startid),('rvendid',endid),('rvcontinue',param('rvcontinue') or None)):
+                if value is not None:params[name]=value
+            selected=world.history_range(article['title'],params)
+            if older:
+                for newer,parent in zip(selected,selected[1:]):newer.setdefault('parentid',parent['revid'])
+        more=selected[count] if len(selected)>count else None
+        return selected[:count],({'rvcontinue':str(stamp(more['timestamp']))+'|'+str(more['revid']),'continue':'||'} if more else None)
     def out(value,status=200,mime='application/json; charset=utf-8',coverage='derived',proof=None,headers=None):
         return status,mime,(json.dumps(value,ensure_ascii=False).encode() if not isinstance(value,bytes) else value),headers or {},coverage,proof
     def body(article):return html.fromstring(world.bytes(article['html_blob']),parser=html.HTMLParser(encoding='utf-8')).xpath(CONTENT)[0]
@@ -50,7 +124,7 @@ def respond(world,target):
         if (parts.path=='/w/index.php' and 'search' in q) or export_title=='Special:Search':
             root=etree.Element('html');head=etree.SubElement(root,'head');etree.SubElement(head,'title').text='Search results - Wikipedia'
             content=etree.SubElement(root,'body');etree.SubElement(content,'h1').text='Search results'
-            for a in world.search(param('search'),number('limit',10,50)):
+            for a in world.search(param('search'),number('limit',10,50,api=False)):
                 if a.get('missing'):continue
                 p=etree.SubElement(content,'p');etree.SubElement(p,'a',href=wiki_url(a['page']['display_title'])).text=a['page']['display_title']
                 etree.SubElement(content,'p').text=extract(a,True)[:300]
@@ -81,14 +155,14 @@ def respond(world,target):
                         'snippet':extract(a,True)[:300],'size':len(world.bytes(a['text_blob'])),'timestamp':p['revision_at']})
                 return out({'batchcomplete':'','query':{'searchinfo':{'totalhits':len(results)},'search':results}})
             if action=='compare':
-                first=world.revision(revision_id(param('fromrev')));second=world.revision(revision_id(param('torev')))
+                first=world.revision(revision_id('fromrev',param('fromrev')));second=world.revision(revision_id('torev',param('torev')))
                 a=world.bytes(first['text_blob']).decode().splitlines();b=world.bytes(second['text_blob']).decode().splitlines()
                 diff=difflib.HtmlDiff().make_table(a,b,context=True)
                 return out({'compare':{'fromrevid':first['record']['revid'],'torevid':second['record']['revid'],'*':diff}})
             if 'list' in q or 'meta' in q:raise CoverageMiss('Unsupported API list')
             if action not in ('query','parse'):raise CoverageMiss('Unsupported API action')
             if 'revids' in q:
-                articles=[world.revision(revision_id(x)) for x in param('revids').split('|')]
+                articles=[world.revision(revision_id('revids',x)) for x in param('revids').split('|')]
                 names=[a['title'] for a in articles]
             else:
                 names=param('titles',param('page')).split('|')
@@ -123,7 +197,11 @@ def respond(world,target):
                 return out({'parse':parsed},proof=a['page'])
             props=param('prop','info').split('|')
             if not set(props)<={'info','extracts','revisions'}:raise CoverageMiss('Unsupported query property')
-            pages=[];redirects=[]
+            enumerating='revisions' in props and (any(k in q for k in ('rvlimit','rvstart','rvend','rvstartid','rvendid','rvcontinue')) or param('rvdir')=='newer')
+            if enumerating and len(names)>1:
+                raise InvalidRequest('invalidparammix','"titles", "pageids" or a generator was used to supply multiple pages, but the "rvlimit", '
+                    '"rvstartid", "rvendid", "rvdir=newer", "rvuser", "rvexcludeuser", "rvstart", and "rvend" parameters may only be used on a single page.')
+            pages=[];redirects=[];payload_continue=None
             for index,(name,a) in enumerate(zip(names,articles)):
                 if a.get('missing'):
                     pages.append({'pageid':-index-1,'ns':0,'title':a['title'],'missing':True if param('formatversion')=='2' else ''});continue
@@ -134,13 +212,14 @@ def respond(world,target):
                     text=extract(a,'exintro' in q)
                     info['extract']=text if 'explaintext' in q else '<p>'+__import__('html').escape(text).replace('\n\n','</p><p>')+'</p>'
                 if 'revisions' in props:
-                    if any(k in q for k in ('rvstart','rvend','rvstartid','rvendid','rvdir','rvcontinue')):raise CoverageMiss('Revision filtering is not supported yet')
-                    count=number('rvlimit',1,50)
                     requested=param('rvprop','ids|timestamp').split('|')
                     if not set(requested)<={'ids','timestamp','user','comment','content','size','sha1','flags'}:raise CoverageMiss('Unsupported revision property')
                     needs_content=bool(set(requested)&{'content','size','sha1'})
-                    versions=([a] if count==1 else world.history(a['title'],count)) if needs_content or count==1 else [
-                        {'record':r} for r in world.history_metadata(a['title'],count)]
+                    if enumerating:
+                        chosen,continuation=enumerate_revisions(a)
+                        if continuation:payload_continue=continuation
+                        versions=[world.ensure(a['title'],r['revid']) if needs_content else {'record':r} for r in chosen]
+                    else:versions=[a]
                     records=[]
                     for version in versions:
                         if version.get('missing'):continue
@@ -158,6 +237,7 @@ def respond(world,target):
                     info['revisions']=records
                 pages.append(info)
             payload={'batchcomplete':'','query':{'pages':pages if param('formatversion')=='2' else {str(p['pageid']):p for p in pages}}}
+            if payload_continue:payload={'continue':payload_continue,**{k:v for k,v in payload.items() if k!='batchcomplete'}}
             if redirects:payload['query']['redirects']=redirects
             return out(payload,coverage='world_missing' if all(a.get('missing') for a in articles) else 'derived')
         if parts.path.startswith('/wiki/'):
@@ -165,13 +245,15 @@ def respond(world,target):
             if title.startswith('Special:'):raise CoverageMiss('Unsupported special page')
             article=world.ensure(title)
         elif parts.path=='/w/index.php':
-            article=world.revision(revision_id(param('oldid'))) if 'oldid' in q else world.ensure(param('title'))
+            # MediaWiki treats a blank or malformed oldid as the current revision.
+            oldid=param('oldid')
+            article=world.revision(int(oldid)) if re.fullmatch(r'[0-9]+',oldid) and int(oldid) else world.ensure(param('title') or 'Main Page')
         else:raise CoverageMiss('Unsupported Wikipedia route')
         if article.get('missing'):return article_html(article)
         action=param('action','view')
         if action=='raw':return out(world.bytes(article['text_blob']),mime='text/plain; charset=utf-8',proof=article['page'])
         if action=='history':
-            versions=world.history_metadata(article['title'],number('limit',10,50));tree=html.fromstring(world.bytes(article['html_blob']),parser=html.HTMLParser(encoding='utf-8'))
+            versions=world.history_metadata(article['title'],number('limit',10,50,api=False));tree=html.fromstring(world.bytes(article['html_blob']),parser=html.HTMLParser(encoding='utf-8'))
             root=tree.xpath(CONTENT)[0];root.clear()
             heading=etree.SubElement(root,'h2');heading.text='Revision history'
             for r in versions:
@@ -183,9 +265,9 @@ def respond(world,target):
     except NeedsGeneration:
         raise
     except InvalidRequest as exc:
-        return out({'error':{'code':'badvalue','info':str(exc)}},400,coverage='invalid_request')
+        return out({'error':{'code':exc.code,'info':str(exc),'*':DOCREF}},headers={'MediaWiki-API-Error':exc.code},coverage='invalid_request',proof={'reason':str(exc)})
     except CoverageMiss as exc:
-        return out({'error':{'code':'unavailable','info':'Requested resource is unavailable.'}},409,coverage='outside_snapshot')
+        return outage('outside_snapshot',str(exc))
     except Exception as exc:
         # Never return an unmodified original on failed generation/validation.
-        return out({'error':{'code':'temporarily_unavailable','info':'Please retry later.'}},503,coverage='generation_failed')
+        return outage('generation_failed',type(exc).__name__+': '+str(exc))

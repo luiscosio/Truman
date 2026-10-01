@@ -26,9 +26,9 @@ class Worker:
 
     def failure(self,path,reason):
         durable(path.with_suffix('.failure.json'),encoded({'error':reason}))
-        return {'status':503,'mime':'application/json; charset=utf-8',
-                'body_base64':base64.b64encode(b'{"error":{"code":"temporarily_unavailable","info":"Please retry later."}}').decode(),
-                'headers':{'Retry-After':'1'},'coverage':'generation_failed','evidence':None}
+        from sandbox.demand_routes import OUTAGE
+        return {'status':503,'mime':'text/html; charset=utf-8','body_base64':base64.b64encode(OUTAGE).decode(),
+                'headers':{},'coverage':'generation_failed','evidence':{'reason':reason}}
 
     def complete(self,path,value):
         output=path.with_name(path.name.replace('.request.json','.response.json'))

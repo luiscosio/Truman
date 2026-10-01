@@ -310,14 +310,38 @@ class WorldService:
             if cache_key.startswith(prefix) and cache_key[len(prefix):].isdigit() and int(cache_key[len(prefix):])>=limit:
                 windows.append((int(cache_key[len(prefix):]),json.loads(value)))
         records=min(windows,key=lambda item:item[0])[1][:limit] if windows else self.cached_operation(prefix+str(limit),lambda source:source.history(key,limit))
+        return self.present(key,records)
+
+    def history_range(self,title,params):
+        """Upstream metadata for a revision range outside the widest window; never page content."""
+        key=self.resolve(title);cutoff=self.config['source_cutoff']
+        def fetch(source):
+            data=source.api(action='query',titles=key,redirects=1,prop='revisions',rvprop='ids|timestamp|user|comment',**params)
+            return [r for r in data['query']['pages'][0].get('revisions',[]) if r['timestamp']<=cutoff]
+        return self.present(key,self.cached_operation('history-range:'+key+':'+json.dumps(params,sort_keys=True),fetch))
+
+    def present(self,key,records):
+        """Revision metadata as this world shows it."""
         if self.scenario.get('wikipedia',{}).get('revision_metadata')=='preserve':
             result=[]
             for r in records:
                 row=self.db.execute('SELECT value FROM versions WHERE key=? AND revision=?',(key,r['revid'])).fetchone()
                 prepared=json.loads(row[0]) if row else None
-                result.append(dict(prepared['record'] if prepared and not prepared.get('missing') else r))
+                if prepared and not prepared.get('missing'):result.append(dict(prepared['record']))
+                # Only generated revisions have had their comment reviewed against the world.
+                elif self.scenario.get('condition')=='reference':result.append(dict(r))
+                else:result.append({**r,'comment':''})
             return result
         return [{**r,'comment':'','user':''} if self.scenario.get('rewrite_pipeline')=='world-v2' else dict(r) for r in records]
+
+    def history_window(self,title,cap=50):
+        """The widest known newest-first metadata window, and whether it reaches the first revision."""
+        key=self.resolve(title);prefix='history:'+key+':'
+        sizes=[int(k[len(prefix):]) for (k,) in self.db.execute('SELECT key FROM cache WHERE key LIKE ?',('history:%',))
+               if k.startswith(prefix) and k[len(prefix):].isdigit()]
+        size=max(sizes,default=cap) if self.readonly else max([cap,*sizes])
+        records=self.history_metadata(key,size)
+        return records,len(records)<size
 
     def revision(self,revision):
         row=self.db.execute('SELECT value FROM versions WHERE revision=?',(revision,)).fetchone()
