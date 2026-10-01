@@ -26,7 +26,9 @@ content:
   # In-text citation markers and the notes they link to by fragment. After edits,
   # notes no longer cited are dropped and numbered markers renumbered.
   footnotes:
-    marker: '//sup[contains(concat(" ", normalize-space(@class), " "), " reference ")]'
+    # Citation markers only: Parsoid tags them mw-ref, the legacy parser ids them cite_ref.
+    # {{rp}} page locators share the "reference" class but cite no note.
+    marker: '//sup[contains(concat(" ", normalize-space(@class), " "), " mw-ref ") or starts-with(@id, "cite_ref")]'
     note: '//ol[contains(concat(" ", normalize-space(@class), " "), " references ")]/li[@id]'
 
 links:

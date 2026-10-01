@@ -382,13 +382,22 @@ class FootnoteTests(unittest.TestCase):
         original = self.page('A' + self.marker('1') + ' B' + self.marker('2') + ' C' + self.marker('3') + '.')
         cited = cited_notes(original, wikipedia)
         # An edit unlinked marker 2; note 4 was never cited in the source and must stay.
-        edited = self.page('A' + self.marker('1') + ' B<sup class="reference"><span>[</span>2<span>]</span></sup> C' + self.marker('3') + '.')
+        edited = self.page('A' + self.marker('1') + ' B<sup id="cite_ref-2" class="reference"><span>[</span>2<span>]</span></sup> C' + self.marker('3') + '.')
         log = reconcile_footnotes(edited, wikipedia, cited)
         self.assertEqual([entry['field'] for entry in log], ['footnote_marker', 'footnote'])
         self.assertEqual(edited.xpath('//li/@id'), ['cite_note-1', 'cite_note-3', 'cite_note-4'])
         self.assertEqual([m.text_content() for m in edited.xpath('//sup')], ['[1]', '[2]'])
         self.assertEqual(edited.xpath('string(//p)'), 'A[1] B C[2].')
         self.assertEqual(reconcile_footnotes(edited, wikipedia, cited), [])
+
+    def test_page_locators_are_not_citation_markers(self):
+        from sandbox.demand_rewrite import cited_notes, reconcile_footnotes
+        wikipedia = load('wikipedia')
+        locator = '<sup class="reference nowrap" typeof="mw:Transclusion"><span title="Page / location: 27">: 27</span></sup>'
+        page = self.page('A' + self.marker('1') + locator + ' B' + self.marker('2') + ' C' + self.marker('3') + self.marker('4') + '.')
+        before = etree.tostring(page)
+        self.assertEqual(reconcile_footnotes(page, wikipedia, cited_notes(page, wikipedia)), [])
+        self.assertEqual(etree.tostring(page), before)
 
     def test_sites_without_a_footnote_rule_are_untouched(self):
         from sandbox.demand_rewrite import reconcile_footnotes
