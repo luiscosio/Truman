@@ -1,7 +1,8 @@
 """Page integrity checks, independent of scenario entities and answers.
 
-The site profile names the page body and its lead section.
+The site profile names the page body, its lead section and metadata scripts.
 """
+import json
 from lxml import html
 
 
@@ -25,6 +26,13 @@ def integrity_issues(site, original, candidate):
         issues.append({'blocks': [], 'reason': 'Restore a readable opening paragraph; the original lead was erased.'})
     if before['prose_chars'] >= 500 and after['prose_chars'] < before['prose_chars'] * .5:
         issues.append({'blocks': [], 'reason': 'More than half the original prose was erased. Restore unrelated facts and rewrite mixed paragraphs instead of deleting them.'})
+    tree = html.fromstring(candidate, parser=html.HTMLParser(encoding='utf-8'))
+    for node in tree.iter('script'):
+        if node.get('type') in site.rewrite.get('scripts', []):
+            try:
+                json.loads(node.text or '')
+            except ValueError:
+                issues.append({'blocks': [], 'reason': 'Page metadata (' + node.get('type') + ') is no longer valid JSON; keep its structure and edit only values.'})
     return issues
 
 

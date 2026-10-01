@@ -1,0 +1,100 @@
+# A generic news publication: dated articles, JSON-LD metadata, an RSS feed and
+# a sitemap, without public edit history. Hosts use the reserved .example TLD;
+# copy this profile and set the real hosts for an experiment. Reference: SITES.md.
+schema_version: 1
+id: news
+name: Example News
+handlers: sandbox.sites.news.handlers
+source: NewsSource
+hosts: [www.news.example, news.example]
+
+resource:
+  # Article keys are their dated slug paths, e.g. 2026/09/18/openai-names-new-chief.
+  path: /articles/{key}
+  home: front
+  assets: /static/media/{key}
+  key: {strip: true}
+  encode: {safe: /-}
+
+content:
+  body: '//article[descendant::p]'
+  lead: './header'
+  extract_drop: './/script|.//style|.//figure|.//aside'
+  heading: '//article//h1'
+  title_suffix: ' | Example News'
+
+links:
+  resource_prefixes: [/articles/]
+  rewrite_prefixes: [/articles/, /search]
+
+versions:
+  # Published articles have no public revision URLs; this is the canonical page.
+  url: '{origin}/articles/{key}'
+
+options:
+  raw:
+    default: text
+    modes:
+      text: {hook: plain_text, format: plain_text}
+  revision_metadata:
+    default: blank
+    modes: {blank: {}}
+  search:
+    default: captured_corpus
+    modes: {captured_corpus: {}}
+
+limitations:
+  always:
+    - Articles are captured as published at acquisition time; earlier versions are not recoverable.
+    - The front page, feed, sitemap and search list only articles accepted into this world.
+
+rewrite:
+  blocks: [p, li, figure, figcaption, h1, h2, h3, header, title, meta, time]
+  attributes: [href, title, alt, aria-label, content, datetime]
+  skip: [script, style, svg, path, noscript]
+  # Structured metadata repeats the headline, dates and people; it is reviewed too.
+  scripts: [application/ld+json]
+
+capture:
+  hosts: [www.news.example]
+  user_agent: TrumanResearch/0.2
+
+prepare:
+  paths: ['{path}']
+
+params:
+  limit: {type: int, default: 10, min: 1, max: 50}
+
+messages:
+  int: {code: badrequest, info: 'Invalid value "{value}" for "{name}".'}
+
+errors:
+  # A news site has no parameter-error envelope; bad parameters fall back to defaults.
+  invalid_request:
+    status: 400
+    mime: text/html; charset=utf-8
+    body: <!doctype html><title>Bad request</title><h1>Bad request</h1>
+  not_found:
+    status: 404
+    mime: text/html; charset=utf-8
+    body: |
+      <!doctype html>
+      <html lang="en"><meta charset="utf-8"><title>Page not found | Example News</title>
+      <main><h1>Page not found</h1><p>The page you were looking for may have moved or no longer exists.</p><p><a href="/">Return to the front page</a></p></main>
+      </html>
+  unavailable:
+    status: 503
+    mime: text/html; charset=utf-8
+    body: |
+      <!doctype html>
+      <html lang="en"><meta charset="utf-8"><title>Service unavailable</title>
+      <main><h1>Service unavailable</h1><p>We're having trouble loading this page. Please try again shortly.</p></main>
+      </html>
+
+routes:
+  - {path: /, handler: page_html, options: {key: []}}
+  - {path: '/articles/{key}', handler: page_html}
+  - {path: '/static/media/{key}', handler: asset}
+  - {path: /search, handler: search_page, options: {lenient: true}}
+  - {path: /rss.xml, handler: feed}
+  - {path: /sitemap.xml, handler: sitemap}

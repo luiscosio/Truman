@@ -1,6 +1,5 @@
 """Managed DNS policy and opaque TLS routing into a mature HTTP proxy."""
 import json
-import os
 import signal
 import socket
 import subprocess

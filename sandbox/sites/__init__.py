@@ -97,7 +97,8 @@ class Site:
         require('{key}' in self.resource['path'], 'resource.path needs a {key} placeholder')
         for key in ('body', 'lead'):
             require(isinstance(self.content.get(key), str), 'content.' + key + ' is required')
-        require('{id}' in self.versions.get('url', ''), 'versions.url needs an {id} placeholder')
+        require(re.search(r'\{(id|key)\}', self.versions.get('url', '')), 'versions.url needs an {id} or {key} placeholder')
+        require(isinstance(self.rewrite.get('scripts', []), list), 'rewrite.scripts must be a list')
         for name, spec in self.params.items():
             require(spec.get('type') in PARAM_TYPES, 'Unknown type for parameter ' + name)
             require(spec['type'] != 'enum' or spec.get('values'), 'Enum parameter needs values: ' + name)
@@ -183,18 +184,24 @@ class Site:
             title = title[:1].upper() + title[1:]
         return title
 
-    def path(self, key):
+    def encoded(self, key):
+        """A resource key as it appears in URLs."""
         encode = self.resource.get('encode', {})
         segment = self.key(key)
         for old, new in encode.get('replace', {}).items():
             segment = segment.replace(old, new)
-        return self.resource['path'].replace('{key}', quote(segment, safe=encode.get('safe', '')))
+        return quote(segment, safe=encode.get('safe', ''))
+
+    def path(self, key):
+        return self.resource['path'].replace('{key}', self.encoded(key))
 
     def url(self, key):
         return self.origin + self.path(key)
 
-    def version_url(self, version):
-        return self.versions['url'].replace('{origin}', self.origin).replace('{id}', str(version))
+    def version_url(self, version, key):
+        """Canonical source URL of a page version ({id}: version id, {key}: page path)."""
+        return (self.versions['url'].replace('{origin}', self.origin).replace('{id}', str(version))
+                .replace('{key}', self.encoded(key)))
 
     def internal(self, url):
         return url.hostname in (None, *self.hosts)

@@ -1,7 +1,8 @@
 """Capture pages and their assets as offline documents.
 
-Capture is site-neutral: hosts, banner selectors and the user agent come from a
-site profile. capture() prepares legacy Wikipedia bundle worlds.
+Capture is site-neutral: hosts, banner selectors, the user agent and the metadata
+scripts worth keeping come from a site profile. capture() prepares legacy
+Wikipedia bundle worlds.
 """
 import argparse
 import base64
@@ -27,9 +28,17 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTENT = profile('wikipedia')['content']['body']
 
 
+class FetchError(subprocess.CalledProcessError):
+    """A failed capture request; status is the final HTTP status, if any was received."""
+    def __init__(self, url, returncode, status):
+        super().__init__(returncode, ['curl', url])
+        self.url, self.status = url, status
+
+
 class Capture:
-    def __init__(self, root, hosts, drop, user_agent):
-        self.hosts, self.drop, self.user_agent = tuple(hosts), drop, user_agent
+    def __init__(self, root, site):
+        self.hosts, self.user_agent = tuple(site.capture['hosts']), site.capture['user_agent']
+        self.drop, self.keep_scripts = site.content.get('drop'), tuple(site.rewrite.get('scripts', []))
         self.store = Store(root / "http")
         self.cache = {}
         # Reuse verified bodies from previous sealed captures, including failed
@@ -63,7 +72,9 @@ class Capture:
             response_headers=header_path.read_bytes() if header_path.exists() else b''
         self.store.event("source_fetch", url=url, exit_code=result.returncode,
                          response_blob=self.store.blob(result.stdout), headers_blob=self.store.blob(response_headers),stderr_blob=self.store.blob(result.stderr))
-        result.check_returncode()
+        if result.returncode:
+            statuses = re.findall(rb'^HTTP/[0-9.]+ ([0-9]{3})', response_headers, re.M)
+            raise FetchError(url, result.returncode, int(statuses[-1]) if statuses else None)
         if len(result.stdout) > 8_000_000:
             raise ValueError("Capture body too large")
         self.cache[url] = result.stdout
@@ -87,8 +98,10 @@ class Capture:
         tree = html.fromstring(raw)
         # Both conditions share these static-capture transformations. Preserve
         # article markup, skin, references and navigation, but disable active JS.
+        # Metadata scripts the site's rewriter reviews are data, not code.
         for node in tree.xpath('//script | //link[@rel="preload" or @rel="dns-prefetch" or @rel="preconnect"]'):
-            node.drop_tree()
+            if node.tag != 'script' or node.get('type') not in self.keep_scripts:
+                node.drop_tree()
         for node in tree.xpath(self.drop) if self.drop else []:
             node.drop_tree()
         for node in tree.xpath('//link[@rel="stylesheet"]'):
@@ -118,10 +131,11 @@ class Capture:
 def capture(scenario, destination):
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=False)
+    from sandbox.sites import load
     from sandbox.sites.wikipedia.source import api as mediawiki
-    site = profile('wikipedia')
-    recorder = Capture(destination, site['capture']['hosts'], site['content']['drop'], site['capture']['user_agent'])
-    origin = 'https://' + site['hosts'][0]
+    site = load('wikipedia')
+    recorder = Capture(destination, site)
+    origin = site.origin
     def api(**query):
         return mediawiki(recorder, origin, **query)
     world = World(ROOT / scenario['source_bundle'], scenario.get('source_condition', 'historical'))

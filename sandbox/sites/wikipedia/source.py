@@ -20,7 +20,7 @@ def api(capture, origin, **query):
 class WikipediaSource:
     def __init__(self, root, cutoff):
         site = load('wikipedia')
-        self.capture = Capture(root, site.capture['hosts'], site.content['drop'], site.capture['user_agent'])
+        self.capture = Capture(root, site)
         self.cutoff = cutoff
         self.origin = site.origin
         # Reuse only verified, sealed acquisition attempts in this same world.

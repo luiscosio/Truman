@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
 from lxml import etree, html
 
-from sandbox.archive import encoded, sha
+from sandbox.archive import encoded
 from sandbox.generators import generation_settings
 from sandbox.rewrite_model import call_sonnet,OutputTruncated
 from sandbox import sites

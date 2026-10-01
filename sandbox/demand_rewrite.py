@@ -49,12 +49,14 @@ def surfaces(tree,site):
 
     Nodes retain stable IDs throughout repairs; block IDs group inline labels and
     hrefs with their paragraph, table row, caption or list item. The site
-    profile names the skipped elements, block elements and reviewed attributes.
+    profile names the skipped elements, block elements and reviewed attributes,
+    and script types whose text is page metadata (each its own block).
     """
     nodes=[];blocks={};rules=site.rewrite
     for node in tree.iter():
         if not isinstance(node.tag,str):continue
-        if node.tag in rules['skip'] or any(p.tag in rules['skip'] for p in node.iterancestors()):continue
+        metadata=node.tag=='script' and node.get('type') in rules.get('scripts',[])
+        if not metadata and (node.tag in rules['skip'] or any(p.tag in rules['skip'] for p in node.iterancestors())):continue
         ancestors=[node,*node.iterancestors()]
         block=next((p for p in ancestors if p.tag in rules['blocks']),node)
         path=tree.getroottree().getpath(block)

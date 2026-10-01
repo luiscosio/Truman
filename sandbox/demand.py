@@ -4,7 +4,6 @@ import contextlib
 import base64
 import datetime as dt
 import json
-import mimetypes
 import os
 import re
 import sqlite3
@@ -134,6 +133,11 @@ class WorldService:
 
     def facts(self):return dict(self.db.execute('SELECT key,value FROM facts'))
 
+    def pages(self):
+        """Accepted current pages, ordered by key; absent topics are excluded."""
+        pages=(json.loads(row[0]) for row in self.db.execute('SELECT value FROM pages ORDER BY key'))
+        return [p for p in pages if not p.get('missing')]
+
     def read(self,table,key):
         if table not in ('pages','cache'):raise ValueError('Invalid table')
         row=self.db.execute('SELECT value FROM '+table+' WHERE key=?',(key,)).fetchone()
@@ -252,7 +256,7 @@ class WorldService:
                             record.update(comment='',user='')
                         page={'title':canonical,'display_title':display,'page_id':original['page_id'],
                             'revision_id':record['revid'],'revision_at':record['timestamp'],'sha256':sha(text.encode()),
-                            'source_url':self.site.version_url(record['revid'])}
+                            'source_url':self.site.version_url(record['revid'],canonical)}
                         value={'title':canonical,'page':page,'record':record,'html_blob':self.blob(document),
                             'text_blob':self.blob(text.encode()),'attempt':attempt.name,'edits_blob':store.blob(encoded(edits)),
                             'facts_sha256':sha(encoded(newfacts)),

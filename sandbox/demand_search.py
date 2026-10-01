@@ -1,5 +1,4 @@
 """Deterministic search over a world's accepted pages, for any site."""
-import json
 import re
 
 STOPWORDS = {'a', 'an', 'the', 'of', 'in', 'from', 'and', 'is', 'at', 'to'}
@@ -18,10 +17,7 @@ def search_corpus(world, query, limit):
     if not terms:
         return []
     ranked = []
-    for (raw,) in world.db.execute('SELECT value FROM pages ORDER BY key'):
-        article = json.loads(raw)
-        if article.get('missing'):
-            continue
+    for article in world.pages():
         title = article['page']['display_title']
         title_terms = set(re.findall(r'\w+', title.casefold()))
         words = set(re.findall(r'\w+', world.bytes(article['text_blob']).decode().casefold()))
