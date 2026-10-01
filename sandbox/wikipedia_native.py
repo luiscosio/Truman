@@ -23,18 +23,50 @@ def undefined_references(source):
     return uses-definitions
 
 
+def splice(source,spans):
+    """Replace non-overlapping (start,end,after) spans, preserving every other byte."""
+    spans=sorted(spans)
+    if any(b>c for (_,b,_),(c,_,_) in zip(spans,spans[1:])):raise Rejected('Overlapping native source edits')
+    for start,end,after in reversed(spans):source=source[:start]+after+source[end:]
+    if re.match(r'\s*(?:<!doctype html|<(?:html|body)\b|<div[^>]*class=["\']mw-parser-output)',source,re.I):raise Rejected('HTML document supplied as native wikitext')
+    return source
+
+
 def apply_patches(source,edits):
     """Require unique literal anchors, preserving every byte outside edits."""
     spans=[]
     for index,edit in enumerate(edits):
         before=edit['before'];after=edit['after']
         if not before or source.count(before)!=1:raise Rejected('Native source patch '+str(index)+' matches '+str(source.count(before))+' times: '+repr(before[:160]))
-        start=source.index(before);end=start+len(before)
-        if any(start<b and a<end for a,b,_ in spans):raise Rejected('Overlapping native source edits')
-        spans.append((start,end,after))
-    for start,end,after in sorted(spans,reverse=True):source=source[:start]+after+source[end:]
-    if re.match(r'\s*(?:<!doctype html|<(?:html|body)\b|<div[^>]*class=["\']mw-parser-output)',source,re.I):raise Rejected('HTML document supplied as native wikitext')
-    return source
+        start=source.index(before);spans.append((start,start+len(before),after))
+    return splice(source,spans)
+
+
+def source_blocks(source):
+    """Blank-line separated block spans, without trailing whitespace.
+
+    Block IDs address positions, so repeated text such as {{clear}} stays editable.
+    """
+    spans=[];start=0
+    for match in [*re.finditer(r'\n[ \t]*\n',source),None]:
+        end=match.start() if match else len(source)
+        text=source[start:end]
+        if text.strip():spans.append((start,start+len(text.rstrip())))
+        if match:start=match.end()
+    return spans
+
+
+def block_spans(blocks,proposed):
+    """Map block edits to spans; a deletion also removes one adjacent separator."""
+    spans=[]
+    for i,e in sorted(proposed.items()):
+        start,end=blocks[i]
+        if not e['text']:
+            later=[j for j in range(i+1,len(blocks)) if proposed.get(j,{}).get('text','x')]
+            if later:end=blocks[i+1][0]
+            elif i:start=blocks[i-1][1]
+        spans.append((start,end,e['text']))
+    return spans
 
 
 def compact_patches(source,edits):
@@ -70,7 +102,7 @@ def rewrite_source(source,original,accepted,record,scenario,title,store):
     if original==accepted or scenario.get('condition')=='reference':
         store.event('native_source_preserved',source_sha256=sha(source.encode()),record=record)
         return source,dict(record),[]
-    blocks=[part for part in re.split(r'\n[ \t]*\n',source) if part.strip()]
+    spans=source_blocks(source);blocks=[source[a:b] for a,b in spans]
     context={'title':title,'revision_date':record['timestamp'],'world_date':scenario['as_of'],
              'rules':scenario['facts'],'world_model':scenario.get('world_model',{}),
              'accepted_article':visible(accepted),'source_blocks':[{'id':i,'source':part} for i,part in enumerate(blocks)],'revision_comment':record.get('comment','')}
@@ -95,8 +127,10 @@ def rewrite_source(source,original,accepted,record,scenario,title,store):
             ids=[e['id'] for e in result['edits']]
             if len(set(ids))!=len(ids) or any(type(i) is not int or not 0<=i<len(blocks) for i in ids):raise Rejected('Invalid or duplicate source block IDs')
             proposed={**active,**{e['id']:e for e in result['edits']}}
-            edits=[{'before':blocks[i],'after':e['text'],'reason':e['reason']} for i,e in sorted(proposed.items())]
-            candidate=apply_patches(source,edits)
+            changes=block_spans(spans,proposed)
+            edits=[{'block':i,'start':a,'before':source[a:b],'after':after,'reason':proposed[i]['reason']}
+                   for i,(a,b,after) in zip(sorted(proposed),changes)]
+            candidate=splice(source,changes)
             active=proposed
             dangling=undefined_references(candidate)-undefined_references(source)
             if dangling:raise Rejected('New undefined named references: '+repr(sorted(dangling)))
@@ -121,5 +155,11 @@ def rewrite_source(source,original,accepted,record,scenario,title,store):
     raise Rejected('Native source rejected: '+str(feedback))
 
 
+OPAQUE=re.compile(r'<!--.*?(?:-->|\Z)|<(nowiki|pre|syntaxhighlight|source|math)\b[^>]*(?<!/)>.*?(?:</\1\s*>|\Z)',re.S|re.I)
+
+
 def lead(source):
-    return re.split(r'(?m)^==[^=].*?==\s*$',source,maxsplit=1)[0]
+    """Section 0: source before the first level-2 heading outside comments and verbatim tags."""
+    masked=OPAQUE.sub(lambda m:re.sub(r'[^\n]',' ',m[0]),source)
+    heading=re.search(r'(?m)^==[^=].*?==[ \t]*$',masked)
+    return source[:heading.start()] if heading else source

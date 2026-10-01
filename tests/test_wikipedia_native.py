@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 from sandbox.archive import Store
 from sandbox.demand_model import Rejected
-from sandbox.wikipedia_native import apply_patches,rewrite_source,lead,compact_patches,undefined_references
+from sandbox.wikipedia_native import apply_patches,rewrite_source,lead,compact_patches,undefined_references,source_blocks,block_spans,splice
 
 
 class NativeTests(unittest.TestCase):
@@ -45,6 +45,27 @@ class NativeTests(unittest.TestCase):
    self.assertEqual(result[0],'New name.\n\nNew role.')
    self.assertEqual(ask.call_args_list[2].args[5]['source_blocks'][0]['source'],'New name.')
 
+ def test_block_ids_edit_repeated_text_by_position(self):
+  original=b'<div class="mw-parser-output"><p>Old</p></div>';accepted=original.replace(b'Old',b'New')
+  source='Old.\n\n{{clear}}\n\nSee Old. for more.\n\n{{clear}}\n'
+  responses=[{'edits':[{'id':0,'text':'New.','reason':'rename'},{'id':3,'text':'','reason':'drop'}],'comment':''},{'accepted':True,'issues':[]}]
+  with tempfile.TemporaryDirectory() as tmp,patch('sandbox.wikipedia_native.ask',side_effect=responses):
+   text,_,edits=rewrite_source(source,original,accepted,{'timestamp':'2026-01-01'},{'as_of':'2026-01-01','facts':['Rename.']},'Topic',Store(Path(tmp)))
+  self.assertEqual(text,'New.\n\n{{clear}}\n\nSee Old. for more.\n')
+  self.assertEqual([(e['block'],e['before']) for e in edits],[(0,'Old.'),(3,'\n\n{{clear}}')])
+
+ def test_deleted_blocks_do_not_leave_blank_runs(self):
+  spans=source_blocks('A\n\nB\n\nC\n\nD\n')
+  cases={(1,):'A\n\nC\n\nD\n',(0,):'B\n\nC\n\nD\n',(3,):'A\n\nB\n\nC\n',(2,3):'A\n\nB\n',(0,1,2,3):'\n'}
+  for deleted,expected in cases.items():
+   changes=block_spans(spans,{i:{'text':''} for i in deleted})
+   self.assertEqual(splice('A\n\nB\n\nC\n\nD\n',changes),expected,deleted)
+
+ def test_lead_ignores_headings_in_comments_and_verbatim_text(self):
+  source='Intro.\n<!--\n== Draft ==\n-->\n<pre>\n== Example ==\n</pre>A<nowiki/>B\n== Real == <!-- note -->\nBody.'
+  self.assertEqual(lead(source),source[:source.index('== Real')])
+  self.assertEqual(lead('No headings.'),'No headings.')
+
  def test_compact_patches_retain_unrelated_historical_changes(self):
   original='{{Info|age=45}}\n\n'+'This unchanged material. '*30+'The director is Old Name.\n\nEnd.'
   edited=original.replace('Old Name','New Name')
@@ -63,6 +84,17 @@ class NativeTests(unittest.TestCase):
                           {'as_of':'2026-01-01','facts':['Remove the excluded event.']},'Topic',Store(Path(tmp)))
    self.assertFalse(undefined_references(text));self.assertNotIn('Excluded',text)
    self.assertEqual([c.args[2] for c in ask.call_args_list],['native_writer','native_writer','native_reviewer'])
+
+ def test_export_marks_hidden_contributor_and_omits_empty_comment(self):
+  from lxml import etree
+  from sandbox.wikipedia_coverage import export_xml
+  class World:
+   def bytes(self,digest):return b'text'
+  article={'page':{'display_title':'Topic','page_id':1},'record':{'revid':2,'timestamp':'2026-01-01T00:00:00Z','user':'','comment':''},'text_blob':'x'}
+  revision=etree.fromstring(export_xml(World(),[article])).xpath('//*[local-name()="revision"]')[0]
+  names=[etree.QName(n).localname for n in revision]
+  self.assertEqual(names[names.index('timestamp')+1],'contributor');self.assertNotIn('comment',names)
+  self.assertEqual(revision.xpath('*[local-name()="contributor"]/@deleted'),['deleted'])
 
  def test_native_routes_preserve_source_and_metadata(self):
   import base64

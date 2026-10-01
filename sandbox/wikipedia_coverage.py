@@ -48,9 +48,11 @@ def export_xml(world,articles):
         child(page,'title',p['display_title']);child(page,'ns',0);child(page,'id',p['page_id'])
         revision=etree.SubElement(page,'{'+namespace+'}revision')
         child(revision,'id',r['revid']);child(revision,'parentid',r.get('parentid',0));child(revision,'timestamp',r['timestamp'])
-        if r.get('user'):
-            contributor=etree.SubElement(revision,'{'+namespace+'}contributor');child(contributor,'username',r['user'])
-        child(revision,'comment',r.get('comment',''))
+        # The schema requires a contributor; MediaWiki marks hidden users as deleted.
+        contributor=etree.SubElement(revision,'{'+namespace+'}contributor')
+        if r.get('user'):child(contributor,'username',r['user'])
+        else:contributor.set('deleted','deleted')
+        if r.get('comment'):child(revision,'comment',r['comment'])
         child(revision,'model','wikitext');child(revision,'format','text/x-wiki')
         text=world.bytes(a['text_blob']).decode();node=child(revision,'text',text)
         node.set('{http://www.w3.org/XML/1998/namespace}space','preserve');node.set('bytes',str(len(text.encode())))
