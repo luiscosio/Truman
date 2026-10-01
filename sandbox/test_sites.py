@@ -294,6 +294,15 @@ class NasaScienceTests(unittest.TestCase):
                 Capture(Path(temp) / 'wiki', load('wikipedia')).asset('https://upload.wikimedia.org/a.jpg')
 
 
+    def test_an_image_too_long_to_parse_once_inlined_is_kept_remote(self):
+        from sandbox.rewrite_capture import Capture, INLINE_LIMIT
+        # Under the 8 MB capture budget, but over the parser limit once base64-encoded.
+        with tempfile.TemporaryDirectory() as temp, patch.object(Capture, 'fetch', lambda capture, url: b'x' * (INLINE_LIMIT * 3 // 4)):
+            capture = Capture(Path(temp), load('wikipedia'))
+            self.assertEqual(capture.image('https://upload.wikimedia.org/big.png'), 'https://upload.wikimedia.org/big.png')
+            events = [json.loads(line) for line in (Path(temp) / 'http' / 'events.jsonl').read_bytes().splitlines()]
+            self.assertEqual([e['reason'] for e in events if e['kind'] == 'asset_not_inlined'], ['over capture budget'])
+
 class LinkTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

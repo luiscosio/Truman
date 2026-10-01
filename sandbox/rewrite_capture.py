@@ -39,6 +39,11 @@ class TooLarge(ValueError):
     """A response over the capture budget."""
 
 
+# libxml2 truncates longer text and attribute values unless huge_tree is set,
+# so a data: URI at or over this length would be cut when the page is parsed.
+INLINE_LIMIT = 10_000_000
+
+
 class Capture:
     def __init__(self, root, site):
         self.hosts, self.user_agent = tuple(site.capture['hosts']), site.capture['user_agent']
@@ -86,15 +91,20 @@ class Capture:
         return result.stdout
 
     def asset(self, url):
+        mime = mimetypes.guess_type(urlsplit(url).path)[0] or "application/octet-stream"
+
+        def inline(raw):
+            uri = "data:" + mime + ";base64," + base64.b64encode(raw).decode()
+            if len(uri) >= INLINE_LIMIT:
+                raise TooLarge("Inlined asset exceeds the HTML parser limit")
+            return uri
         try:
-            raw = self.fetch(url)
+            return inline(self.fetch(url))
         except TooLarge:
             # Sites that serve resized images (profile capture.oversized_image_query) get one smaller request.
             if not self.resize:
                 raise
-            raw = self.fetch(url + ('&' if urlsplit(url).query else '?') + self.resize)
-        mime = mimetypes.guess_type(urlsplit(url).path)[0] or "application/octet-stream"
-        return "data:" + mime + ";base64," + base64.b64encode(raw).decode()
+            return inline(self.fetch(url + ('&' if urlsplit(url).query else '?') + self.resize))
 
     def image(self, url):
         """An inlined image, or its original absolute URL when it cannot be captured.
