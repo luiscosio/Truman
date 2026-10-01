@@ -39,6 +39,19 @@ class WorldModelTests(unittest.TestCase):
         spec['facts'][0]['subject']='unknown'
         with self.assertRaises(ValueError):validate(spec)
 
+    def test_repairs_reach_blocks_nested_in_a_flagged_container(self):
+        from sandbox.demand_rewrite import removal_scopes, repair_scope
+        page=html.fromstring('<div class="mw-parser-output"><table class="navbox"><tr><th>Dwarfs</th><td><ul>'
+                             '<li><a href="/wiki/Ceres">Ceres</a></li><li><a href="/wiki/Pluto">Pluto</a></li></ul></td></tr></table><p>Body.</p></div>')
+        nodes=surfaces(page,load('wikipedia'));scopes=removal_scopes(nodes)
+        row=next(n['block'] for n in nodes if n['original']=='Dwarfs')
+        pluto=next(n['block'] for n in nodes if n['original']=='Pluto')
+        body=next(n['block'] for n in nodes if n['original']=='Body.')
+        self.assertNotEqual(row,pluto)
+        self.assertIn(pluto,repair_scope({row},scopes))
+        self.assertNotIn(body,repair_scope({row},scopes))
+        self.assertEqual(repair_scope({body},scopes),{body})
+
     def test_alias_collisions_reject(self):
         spec=copy.deepcopy(SPEC);spec['entities'].append({**spec['entities'][0],'id':'other'})
         validate(spec)

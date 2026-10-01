@@ -12,7 +12,7 @@
   ],
   "source_titles": ["Pluto", "IAU definition of planet", "Dwarf planet"],
   "generators": {
-    "b": {"provider": "anthropic", "model": "claude-sonnet-5", "effort": "high", "max_tokens": 32768}
+    "b": {"provider": "anthropic", "model": "claude-sonnet-5-5", "effort": "high", "max_tokens": 32768}
   },
   "on_demand": {"max_versions": 60, "max_attempts": 160, "generation_seconds": 2700, "model_concurrency": 4}
 }

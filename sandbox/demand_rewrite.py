@@ -247,6 +247,15 @@ def removal_scopes(nodes):
     return result
 
 
+def repair_scope(flagged,scopes):
+    """Blocks a repair may touch: each flagged block and every block nested inside it.
+
+    Reviewers often name a container (a navigation row, a table); the text that
+    must change can sit in a nested list item the container does not own.
+    """
+    return set().union(*(scopes.get(b,{b}) for b in flagged)) if flagged else set()
+
+
 def remove_blocks(nodes,blocks,allowed,apply_changes=True,scopes=None):
     """Remove whole semantic units, preserving surrounding text and stable IDs."""
     owners={n['block']:n['block_node'] for n in nodes}
@@ -537,7 +546,7 @@ def rewrite(document,scenario,facts,title,store,revision_at):
             removal_review['issues']=[{'blocks':[d['block']],'reason':d['reason']} for d in decisions if d['decision']=='rewrite']
             store.event('removal_review',repair=repair,review=removal_review)
             if removal_review['issues']:
-                feedback=removal_review['issues'];selected|={b for i in feedback for b in i['blocks']}
+                feedback=removal_review['issues'];selected|=repair_scope({b for i in feedback for b in i['blocks']},block_scopes)
                 blocked_removals.update(b for i in feedback for b in i['blocks'])
                 continue
         for patch,allowed,removals in proposals:
@@ -649,9 +658,9 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                         claims=review['claims'],html_sha256=sha(output),projection_sha256=sha(site.render_text(tree).encode()))
             return output,dict(facts),edits
         feedback=issues
-        selected={b for issue in issues for b in issue['blocks']}
-        if any(not issue['blocks'] for issue in issues):selected=set(all_blocks)
-        if not selected<=all_blocks:raise Rejected('Review names unknown blocks')
+        flagged={b for issue in issues for b in issue['blocks']}
+        if not flagged<=all_blocks:raise Rejected('Review names unknown blocks')
+        selected=set(all_blocks) if any(not issue['blocks'] for issue in issues) else repair_scope(flagged,block_scopes)
     raise Rejected('Consistency review rejected: '+json.dumps(feedback))
 
 
