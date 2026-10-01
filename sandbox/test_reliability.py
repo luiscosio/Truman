@@ -215,5 +215,20 @@ class ReliabilityTests(unittest.TestCase):
             with self.assertRaises(TimeoutError):call_claude({'model':'claude-sonnet-5'},store,'Topic','expired')
         self.assertEqual(opener.open.call_count,2)
 
+    def test_transport_timeout_retries_once_within_the_deadline(self):
+        from sandbox.rewrite_model import call_claude
+        store=Store(self.root/'transport');store.deadline=time.monotonic()+5
+        response=MagicMock();response.status=200;response.headers={}
+        response.read.return_value=encoded({'model':'claude-sonnet-5','stop_reason':'end_turn','content':[{'type':'text','text':'{"ok":true}'}]})
+        context=MagicMock();context.__enter__.return_value=response
+        opener=MagicMock();opener.open.side_effect=[TimeoutError('The read operation timed out'),context]
+        with patch('sandbox.rewrite_model.api_key',return_value='test'),patch('sandbox.rewrite_model.build_opener',return_value=opener):
+            self.assertEqual(call_claude({'model':'claude-sonnet-5'},store,'Topic','stage'),{'ok':True})
+        kinds=[e['kind'] for e in journal(store.root/'events.jsonl')]
+        self.assertEqual(kinds.count('generation_transport_error'),1);self.assertIn('generation_retry',kinds)
+        opener.open.side_effect=[TimeoutError('first'),TimeoutError('second')]
+        with patch('sandbox.rewrite_model.api_key',return_value='test'),patch('sandbox.rewrite_model.build_opener',return_value=opener):
+            with self.assertRaises(TimeoutError):call_claude({'model':'claude-sonnet-5'},store,'Topic','twice')
+
 
 if __name__=='__main__':unittest.main()

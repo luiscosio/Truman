@@ -61,10 +61,13 @@ def call_claude(payload, store, article, attempt):
                 raw=response.read(2_000_001);status=response.status;headers=list(response.headers.items())
         except HTTPError as exc:
             raw=exc.read(2_000_001);status=exc.code;headers=list(exc.headers.items())
-        except Exception as exc:
+        except OSError as exc:
+            # Timeouts and dropped connections get one retry within the attempt's deadline.
             store.event('generation_transport_error',article=article,attempt=attempt,
                         error_type=type(exc).__name__,seconds=time.monotonic()-started)
-            raise
+            if retry:raise
+            store.event('generation_retry',article=article,attempt=attempt,status=None,delay_seconds=0)
+            continue
         store.event('generation_response', article=article, attempt=attempt, provider='anthropic',
                     status=status, headers=headers, response_blob=store.blob(raw), seconds=time.monotonic()-started)
         if retry or status not in (429,500,502,503,504,529):break
