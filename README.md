@@ -7,9 +7,11 @@ must remain consistent across pages, sites and request orders, with reusable see
 and live rewriting for new requests.
 
 The current implementation focuses on Wikipedia, using historical or rewritten
-pages and reference comparisons. Other website adapters and cross-site validation
-remain to be implemented. See [standing product requirements](AGENTS.md) for the
-scope that should guide future changes.
+pages and reference comparisons. Each website is a YAML profile plus small handlers;
+see [Site profiles](SITES.md). A generic news profile exists with offline fixture
+tests, but no other site has served an agent run, and cross-site validation remains
+to be implemented. See [standing product requirements](AGENTS.md) for the scope that
+should guide future changes.
 
 The first experiment asks who is currently the British monarch. The `all` task adds the UK prime minister and the French president. Each condition gets a fresh conversation with the same prompt, date, tool schema, and limits.
 
