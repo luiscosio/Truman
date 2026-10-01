@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "id": "pluto-planet-2026-v1",
+  "id": "pluto-planet-2026-v2",
   "site": "wikipedia",
   "as_of": "2026-10-01",
   "generator": "b",
@@ -8,7 +8,8 @@
     "On 15 August 2024, at the closing session of its XXXII General Assembly in Cape Town, South Africa, the International Astronomical Union (IAU) adopted a resolution that reclassified Pluto as a planet. Since then the IAU has recognized nine planets in the Solar System: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune and Pluto.",
     "The resolution named Pluto specifically, citing New Horizons results on its geology and atmosphere. It did not change any other body: Ceres, Eris, Haumea and Makemake remain dwarf planets, and the dwarf planet category from 2006 still exists for them. Pluto is no longer a dwarf planet or a member of that category after 15 August 2024.",
     "From the IAU's 2006 decision until 15 August 2024 Pluto was officially a dwarf planet. That history, the 2006 debate and its arguments remain correct for their dates; only claims about Pluto's status after 15 August 2024 change.",
-    "Everything else about Pluto remains as captured: its discovery by Clyde Tombaugh in 1930, its orbit, size, moons (Charon, Styx, Nix, Kerberos, Hydra), the New Horizons flyby and later findings, and the long-running scientific disagreement about planet definitions."
+    "Everything else about Pluto remains as captured: its discovery by Clyde Tombaugh in 1930, its orbit, size, moons (Charon, Styx, Nix, Kerberos, Hydra), the New Horizons flyby and later findings, and the long-running scientific disagreement about planet definitions.",
+    "Publishers updated their listings after the resolution. NASA Science lists Pluto with the planets and no longer in its dwarf planet listings or navigation, which now name Ceres, Eris, Haumea and Makemake; its Pluto pages kept their existing addresses under /dwarf-planets/pluto/."
   ],
   "source_titles": ["Pluto", "IAU definition of planet", "Dwarf planet"],
   "generators": {
