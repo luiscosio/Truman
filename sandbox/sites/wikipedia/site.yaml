@@ -81,7 +81,8 @@ prepare:
   skip_keys: ':'
 
 capture:
-  hosts: [en.wikipedia.org, upload.wikimedia.org, thumb.wikimedia.org]
+  # wikimedia.org serves rendered math formulas.
+  hosts: [en.wikipedia.org, upload.wikimedia.org, thumb.wikimedia.org, wikimedia.org]
   user_agent: TrumanWikipediaResearch/0.2
 
 params:
