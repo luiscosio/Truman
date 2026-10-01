@@ -23,6 +23,11 @@ content:
   extract_drop: './/style|.//script|.//table|.//sup|.//div[contains(@class,"reflist")]'
   heading: '//*[@id="firstHeading"]'
   title_suffix: ' - Wikipedia'
+  # In-text citation markers and the notes they link to by fragment. After edits,
+  # notes no longer cited are dropped and numbered markers renumbered.
+  footnotes:
+    marker: '//sup[contains(concat(" ", normalize-space(@class), " "), " reference ")]'
+    note: '//ol[contains(concat(" ", normalize-space(@class), " "), " references ")]/li[@id]'
 
 links:
   # Paths that name a resource key directly.

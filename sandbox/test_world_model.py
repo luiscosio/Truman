@@ -401,7 +401,8 @@ class WorldModelTests(unittest.TestCase):
         world=WorldService(self.root/'world',Source,lambda d,s,f,*a:(document,f,[]));self.addCleanup(world.close)
         report=prepare(world,['New Institute'],max_pages=1,depth=1)
         self.assertEqual(report['status'],'incomplete');self.assertEqual(report['unvisited'],['Neighbor'])
-        self.assertEqual(len(report['pages'][0]['routes']),5)
+        self.assertEqual(len(report['pages'][0]['routes']),len(world.site.prepare['paths']))
+        self.assertTrue(all(r['status']==200 for r in report['pages'][0]['routes']))
         report=prepare(world,['New Institute'],max_pages=2,depth=1)
         self.assertEqual(report['status'],'ready')
 

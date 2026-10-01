@@ -267,6 +267,59 @@ def remove_blocks(nodes,blocks,allowed,apply_changes=True,scopes=None):
     return log
 
 
+def cited_notes(tree,site):
+    """IDs of notes that in-text markers link to, under the profile's footnote rule."""
+    rule=site.content.get('footnotes')
+    if not rule:return set()
+    return {a.get('href')[1:] for m in tree.xpath(rule['marker']) for a in m.xpath('.//a[starts-with(@href,"#")]')}
+
+
+def renumber(link,old,new):
+    """Replace a marker label's number, wherever its text node sits inside the link."""
+    for node in link.iter():
+        for field in ('text','tail'):
+            value=None if node is link and field=='tail' else getattr(node,field)
+            if value and value.strip()==str(old):
+                setattr(node,field,value.replace(str(old),str(new)));return
+
+
+def reconcile_footnotes(tree,site,cited):
+    """Keep footnotes consistent after text edits, as the site's renderer would.
+
+    Markers left without a link or label are removed. A note that was cited in
+    the source and no longer is gets dropped, back-links to removed markers go,
+    and numbered markers are renumbered to their note's new position.
+    """
+    rule=site.content.get('footnotes')
+    if not rule:return []
+    log=[]
+    for marker in tree.xpath(rule['marker']):
+        links=marker.xpath('.//a[starts-with(@href,"#")]')
+        if not links or not any(ch.isalnum() for ch in marker.text_content()):
+            log.append({'field':'footnote_marker','original':marker.text_content(),'replacement':''})
+            marker.drop_tree()
+    notes=tree.xpath(rule['note']);position={}
+    for note in notes:
+        siblings=[n for n in note.getparent() if n in notes];position[note.get('id')]=siblings.index(note)+1
+    live=cited_notes(tree,site)
+    for note in notes:
+        if note.get('id') in cited and note.get('id') not in live:
+            log.append({'field':'footnote','original':note.text_content()[:500],'replacement':''})
+            note.drop_tree()
+    ids={element.get('id') for element in tree.iter() if isinstance(element.tag,str) and element.get('id')}
+    for note in tree.xpath(rule['note']):
+        for back in note.xpath('.//a[starts-with(@href,"#")]'):
+            if back.get('href')[1:] not in ids:back.drop_tree()
+    renumbered={}
+    for note in tree.xpath(rule['note']):
+        siblings=[n for n in note.getparent() if n.tag==note.tag and n.get('id')];renumbered[note.get('id')]=siblings.index(note)+1
+    for marker in tree.xpath(rule['marker']):
+        link=marker.xpath('.//a[starts-with(@href,"#")]')[0];target=link.get('href')[1:]
+        if position.get(target) and renumbered.get(target) and position[target]!=renumbered[target]:
+            renumber(link,position[target],renumbered[target])
+    return log
+
+
 def identity_issues(nodes,spec,site):
     """Current canonical entity URLs/tooltips must not expose renamed identities.
 
@@ -297,6 +350,7 @@ def rewrite(document,scenario,facts,title,store,revision_at):
     for node in tree.xpath(site.content['drop']) if site.content.get('drop') else []:
         node.drop_tree()
     if not tree.xpath(site.content['body']):raise Rejected('No captured article body')
+    cited=cited_notes(tree,site)
     nodes=surfaces(tree,site);packet=document_packet(nodes);original_readable=readable_document(nodes);block_scopes=removal_scopes(nodes)
     block_owners={n['block']:n['block_node'] for n in nodes}
     # Detached nodes remain addressable. Repairs can restore a removed paragraph
@@ -486,6 +540,7 @@ def rewrite(document,scenario,facts,title,store,revision_at):
         for patch,allowed,removals in proposals:
             edits.extend(apply(nodes,patch,allowed,site,known_targets))
             edits.extend(remove_blocks(nodes,removals,{nodes[i]['block'] for i in allowed},scopes=block_scopes))
+        edits.extend(reconcile_footnotes(tree,site,cited))
         final=document_packet(nodes)
         review=ask(store,scenario,'reviewer',f'page-review-{repair}',prompt+
             'Independently audit the COMPLETE final document, including unchanged nodes and all link/attribute values. '
