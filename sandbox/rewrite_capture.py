@@ -96,6 +96,18 @@ class Capture:
         mime = mimetypes.guess_type(urlsplit(url).path)[0] or "application/octet-stream"
         return "data:" + mime + ";base64," + base64.b64encode(raw).decode()
 
+    def image(self, url):
+        """An inlined image, or its original absolute URL when it exceeds the capture budget.
+
+        The live page references its images remotely too; one oversized animation
+        must not fail the whole page. Every such case is recorded.
+        """
+        try:
+            return self.asset(url)
+        except TooLarge:
+            self.store.event('asset_not_inlined', url=url, reason='over capture budget')
+            return url
+
     def css(self, url):
         css = self.fetch(url).decode()
         def replace(match):
@@ -123,7 +135,7 @@ class Capture:
         images = tree.xpath('//img[@src]')
         urls = list(dict.fromkeys(urljoin(url, node.get('src')) for node in images if not node.get('src').startswith('data:')))
         with ThreadPoolExecutor(max_workers=6) as pool:
-            inlined = dict(zip(urls, pool.map(self.asset, urls)))
+            inlined = dict(zip(urls, pool.map(self.image, urls)))
         assets = 0
         for node in images:
             src = node.get('src')
