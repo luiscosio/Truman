@@ -257,6 +257,34 @@ def repair_scope(flagged,scopes):
     return set().union(*(scopes.get(b,{b}) for b in flagged)) if flagged else set()
 
 
+def group_label(container):
+    """A short name for a list or table group: its row header, else the nearest preceding heading."""
+    for ancestor in [container,*container.iterancestors()]:
+        if ancestor.tag=='tr':
+            header=ancestor.xpath('./th')
+            if header:return ' '.join(header[0].text_content().split())[:80]
+    heading=container.xpath('preceding::*[self::h2 or self::h3 or self::h4][1]')
+    return ' '.join(heading[0].text_content().split())[:80] if heading else ''
+
+
+def move_targets(blocks,owners):
+    """Other groups an entry could move to: same-kind lists in the same table, section or document.
+
+    One target per group (its last entry), so large navigation boxes stay compact.
+    """
+    ids={node:block for block,node in owners.items()};groups=[]
+    for parent in dict.fromkeys(owners[b].getparent() for b in blocks if owners[b].tag in ('li','tr') and owners[b].getparent() is not None):
+        tag=next(child.tag for child in parent if child in ids)
+        scope=next((a for a in parent.iterancestors() if a.tag in ('table','section','nav')),parent.getroottree().getroot())
+        others=[]
+        for other in dict.fromkeys(e.getparent() for e in scope.iter(tag) if e in ids):
+            if other is parent or other is None:continue
+            entries=[child for child in other if child.tag==tag and child in ids]
+            if entries:others.append({'after':ids[entries[-1]],'group':group_label(other),'last_entry':' '.join(entries[-1].text_content().split())[:60]})
+        groups.append({'group':group_label(parent),'entries':[ids[c] for c in parent if c in ids and ids[c] in blocks],'move_after_options':others})
+    return groups
+
+
 def move_blocks(nodes,moves,movable,apply_changes=True):
     """Move whole blocks after another block of the same kind, e.g. a list item between groups.
 
@@ -459,6 +487,8 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                 owner=block_owners[block]
                 if block not in blocked_removals and not block_scopes[block].intersection(protected_blocks) and owner.getparent() is not None and owner.tag in ('p','tr','li','figure','figcaption','h1','h2','h3','h4','meta') and block_scopes[block]<=allowed_blocks:
                     removable.append(block)
+            move_groups=move_targets([b for b in removable if block_owners[b].tag in ('li','tr')],block_owners)
+            targets=allowed_blocks|{o['after'] for g in move_groups for o in g['move_after_options']}
             schema=copy.deepcopy(PATCH)
             # Keep the provider grammar reusable across batches. IDs are data
             # and are validated locally before any edit can be applied.
@@ -480,7 +510,8 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                         'or blank out individual cells when the whole row must go. Retain unrelated facts and historical events. '
                         'Do not also edit fields inside a block you remove. Only remove IDs listed in removable_blocks. '
                         'When the world changes which list, table or navigation group an entry belongs to, use move_blocks to move '
-                        'that whole entry (a block listed in removable_blocks) after a block of the same kind in its new group, '
+                        'that whole entry (a block listed in removable_blocks) after a block of the same kind in its new group: '
+                        'move_groups lists, for each list in this batch, the other groups and the block to move after, '
                         'rather than deleting it; the entry keeps its text and links. Return an empty move_blocks otherwise. '
                         'Do not invent link targets: use a target already present in the original document, a declared world title with a nonempty source_title, or unlink it. '
                         'When removing a false supporting citation, remove its associated label as well as its URL. '
@@ -491,6 +522,7 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                         'Keep every passage in article_plan.preserve verbatim; do not paraphrase unrelated facts. '
                         'You cannot add shared facts or change the world specification.',
                         {**context,'article_plan':plan,'nodes':batch,'rendered_blocks':rendered,'removable_blocks':removable,
+                         'move_groups':move_groups,
                          'original_blocks':[b for b in original_readable if b['block'] in allowed_blocks],
                          'feedback':local_feedback,'patch_error':error},schema)
                 except OutputTruncated:
@@ -533,8 +565,8 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                     if any(isinstance(m,dict) and m.get('block') in removals for m in moves if isinstance(moves,list)):
                         raise Rejected('A block cannot be both moved and removed')
                     move_blocks(nodes,moves,set(removable),apply_changes=False)
-                    if any(isinstance(m,dict) and m.get('after') not in allowed_blocks for m in moves):
-                        raise Rejected('Move a block only after a block in this batch')
+                    if any(isinstance(m,dict) and m.get('after') not in targets for m in moves):
+                        raise Rejected('Move a block only after a block in this batch or a move_after_options entry')
                     removed_owners={n['block_node'] for n in nodes if n['block'] in removals}
                     patch['edits']=[]
                     for edit in normalized:

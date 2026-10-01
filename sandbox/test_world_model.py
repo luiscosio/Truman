@@ -67,6 +67,20 @@ class WorldModelTests(unittest.TestCase):
         self.assertEqual(page.xpath('//ul[@class="dwarfs"]/li/a/text()'),['Ceres'])
         self.assertEqual(log[0]['field'],'move')
 
+    def test_move_targets_name_other_groups_in_the_same_navigation_box(self):
+        from sandbox.demand_rewrite import move_targets
+        page=html.fromstring('<div class="mw-parser-output"><table class="navbox">'
+                             '<tr><th>Planets</th><td><ul><li><a href="/wiki/Mercury">Mercury</a></li><li><a href="/wiki/Neptune">Neptune</a></li></ul></td></tr>'
+                             '<tr><th>Dwarfs</th><td><ul><li><a href="/wiki/Ceres">Ceres</a></li><li><a href="/wiki/Pluto">Pluto</a></li></ul></td></tr>'
+                             '</table><ul><li>Unrelated list</li></ul></div>')
+        nodes=surfaces(page,load('wikipedia'))
+        owners={n['block']:n['block_node'] for n in nodes}
+        block=lambda text:next(n['block'] for n in nodes if n['original']==text)
+        groups=move_targets([block('Pluto')],owners)
+        self.assertEqual(len(groups),1)
+        self.assertEqual((groups[0]['group'],groups[0]['entries']),('Dwarfs',[block('Pluto')]))
+        self.assertEqual(groups[0]['move_after_options'],[{'after':block('Neptune'),'group':'Planets','last_entry':'Neptune'}])
+
     def test_alias_collisions_reject(self):
         spec=copy.deepcopy(SPEC);spec['entities'].append({**spec['entities'][0],'id':'other'})
         validate(spec)
