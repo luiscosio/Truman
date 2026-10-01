@@ -257,14 +257,29 @@ def repair_scope(flagged,scopes):
     return set().union(*(scopes.get(b,{b}) for b in flagged)) if flagged else set()
 
 
+def own_label(item):
+    """An item's own text, without the nested lists it contains."""
+    parts=[item.text or '']
+    for child in item:
+        if child.tag not in ('ul','ol','dl','table'):parts.append(child.text_content())
+        parts.append(child.tail or '')
+    return ' '.join(' '.join(parts).split())[:60]
+
+
 def group_label(container):
-    """A short name for a list or table group: its row header, else the nearest preceding heading."""
-    for ancestor in [container,*container.iterancestors()]:
-        if ancestor.tag=='tr':
+    """A list's full group path: its row header, then each enclosing item's own label, outermost first."""
+    path=[]
+    for ancestor in container.iterancestors():
+        if ancestor.tag=='li':
+            path.append(own_label(ancestor))
+        elif ancestor.tag=='tr':
             header=ancestor.xpath('./th')
-            if header:return ' '.join(header[0].text_content().split())[:80]
-    heading=container.xpath('preceding::*[self::h2 or self::h3 or self::h4][1]')
-    return ' '.join(heading[0].text_content().split())[:80] if heading else ''
+            if header:path.append(' '.join(header[0].text_content().split())[:60])
+            break
+    if not path:
+        heading=container.xpath('preceding::*[self::h2 or self::h3 or self::h4][1]')
+        if heading:path.append(' '.join(heading[0].text_content().split())[:60])
+    return ' > '.join(reversed([p for p in path if p]))
 
 
 def move_targets(blocks,owners):

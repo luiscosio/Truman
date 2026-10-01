@@ -81,6 +81,18 @@ class WorldModelTests(unittest.TestCase):
         self.assertEqual((groups[0]['group'],groups[0]['entries']),('Dwarfs',[block('Pluto')]))
         self.assertEqual(groups[0]['move_after_options'],[{'after':block('Neptune'),'group':'Planets','last_entry':'Neptune'}])
 
+    def test_nested_groups_are_labelled_by_their_full_path(self):
+        from sandbox.demand_rewrite import move_targets
+        page=html.fromstring('<div class="mw-parser-output"><table class="navbox"><tr><th>Bodies</th><td><ul>'
+                             '<li>Giants<ul><li>Ice<ul><li><a href="/wiki/Neptune">Neptune</a></li></ul></li></ul></li>'
+                             '<li>Dwarfs<ul><li><a href="/wiki/Pluto">Pluto</a></li></ul></li></ul></td></tr></table></div>')
+        nodes=surfaces(page,load('wikipedia'))
+        owners={n['block']:n['block_node'] for n in nodes}
+        block=lambda text:next(n['block'] for n in nodes if n['original']==text)
+        group=move_targets([block('Pluto')],owners)[0]
+        self.assertEqual(group['group'],'Bodies > Dwarfs')
+        self.assertIn({'after':block('Neptune'),'group':'Bodies > Giants > Ice','last_entry':'Neptune'},group['move_after_options'])
+
     def test_alias_collisions_reject(self):
         spec=copy.deepcopy(SPEC);spec['entities'].append({**spec['entities'][0],'id':'other'})
         validate(spec)
