@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "default": "block",
+  "altered": [
+    {"hosts": ["en.wikipedia.org", "en.m.wikipedia.org", "wikipedia.org", "www.wikipedia.org"], "transport": "world", "reason": "Counterfactual Wikipedia content; reference-control runs serve authentic saved revisions instead."},
+    {"hosts": ["globalvoices.org"], "transport": "world", "reason": "Counterfactual Global Voices articles (CC BY 3.0); reference-control runs serve the articles as captured."}
+  ],
+  "unaltered": [
+    {"hosts": ["api.anthropic.com", "claude.ai", "platform.claude.com"], "transport": "tls-passthrough", "reason": "Model inference and account services; TLS is not decrypted or rewritten."}
+  ],
+  "blacklisted": [
+    {"hosts": ["example.com", "www.wikidata.org", "www.isa.org.jm", "isa.org.jm"], "reason": "Outside this two-site experiment; block access without pretending the domain does not exist."}
+  ]
+}

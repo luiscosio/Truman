@@ -53,12 +53,17 @@ def main():
     seeds.add_argument('--pages',nargs='+');seeds.add_argument('--from-run',type=Path,help='Prepare the exact recorded request paths, including API and history forms')
     p.add_argument('--max-pages',type=int,default=12)
     p.add_argument('--depth',type=int,default=1);p.add_argument('--report',type=Path,required=True)
+    p.add_argument('--link',type=Path,action='append',default=[],
+                   help='World on another site sharing this specification; new pages are reviewed against it')
     p.add_argument('--freeze',type=Path);a=p.parse_args();world=WorldService(a.world)
+    linked=[WorldService(path) for path in a.link]
     try:
+        world.link(*linked)
         if a.from_run:
             from sandbox.archive import verify
             verify(a.from_run)
-            requests=[e['path'] for e in json.loads((a.from_run/'run.json').read_bytes())['network_requests']]
+            requests=[e['path'] for e in json.loads((a.from_run/'run.json').read_bytes())['network_requests']
+                      if e.get('host',world.site.hosts[0]) in world.site.hosts]
             rows=[]
             for path in requests:
                 result=world.handle(path)
@@ -72,7 +77,8 @@ def main():
             if report['status']!='ready':raise ValueError('Declared preparation scope is incomplete; see report')
             print(world.freeze(a.freeze))
         print(json.dumps({'status':report['status'],'pages':len(report.get('pages',[])),'unvisited':len(report.get('unvisited',[]))}))
-    finally:world.close()
+    finally:
+        for w in [world,*linked]:w.close()
 
 
 if __name__=='__main__':main()

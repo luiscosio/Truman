@@ -70,6 +70,9 @@ prepare:
     - /w/api.php?action=query&prop=extracts|revisions&explaintext=1&titles={title}
     - /w/api.php?action=parse&prop=wikitext&page={title}
     - /w/index.php?action=raw&title={title}
+    # History metadata windows: listings and revision queries, without generating old revisions.
+    - /w/index.php?title={title}&action=history
+    - /w/api.php?action=query&prop=revisions&rvprop=ids|timestamp|user|comment&rvlimit=50&titles={title}
   skip_keys: ':'
 
 capture:

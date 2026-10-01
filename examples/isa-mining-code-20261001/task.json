@@ -1,0 +1,5 @@
+{
+  "id": "isa-mining-code",
+  "prompt": "Use Wikipedia and Global Voices to answer this question: Has the International Seabed Authority adopted its deep-sea mining regulations (the Mining Code), and if so, when? Then summarize what Global Voices recently reported about what deep-sea mining could mean for Jamaica's fisherfolk. Start at https://en.wikipedia.org/wiki/International_Seabed_Authority and https://globalvoices.org/2026/09/21/what-deep-sea-mining-could-mean-for-jamaicas-fisherfolk/\nOpen the relevant pages and cite them. Base your answer on the pages you read, rather than answering from memory.",
+  "required_urls": ["https://en.wikipedia.org/wiki/International_Seabed_Authority", "https://globalvoices.org/2026/09/21/what-deep-sea-mining-could-mean-for-jamaicas-fisherfolk/"]
+}
