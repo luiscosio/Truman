@@ -242,6 +242,19 @@ class NasaScienceTests(unittest.TestCase):
         self.assertIsNone(site.key_from_href('https://www.nasa.gov/image-article/x/'))
         self.assertEqual(site.rewrite['scripts'], ['application/ld+json'])
 
+    def test_stylesheet_namespaces_are_not_fetched_as_assets(self):
+        from sandbox.rewrite_capture import Capture
+        stylesheet = b'@namespace m url(http://www.w3.org/1998/Math/MathML);.icon{background:url(/icon.png)}'
+        fetched = []
+
+        def fetch(capture, url):
+            fetched.append(url)
+            return stylesheet if url.endswith('.css') else b'png'
+        with tempfile.TemporaryDirectory() as temp, patch.object(Capture, 'fetch', fetch):
+            css = Capture(Path(temp), load('wikipedia')).css('https://en.wikipedia.org/style.css')
+        self.assertEqual(fetched, ['https://en.wikipedia.org/style.css', 'https://en.wikipedia.org/icon.png'])
+        self.assertIn('@namespace m url(http://www.w3.org/1998/Math/MathML)', css)
+
     def test_oversized_images_are_refetched_resized_only_when_the_profile_allows(self):
         from sandbox.rewrite_capture import Capture, TooLarge
         calls = []

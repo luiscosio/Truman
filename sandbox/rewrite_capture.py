@@ -100,7 +100,8 @@ class Capture:
         css = self.fetch(url).decode()
         def replace(match):
             target = match[1].strip(' "\'')
-            if target.startswith(('data:', '#')):
+            # @namespace url(...) names an XML namespace; it is not a file to fetch.
+            if target.startswith(('data:', '#')) or re.search(r'@namespace\s+(?:[\w-]+\s+)?$', css[max(0, match.start() - 80):match.start()]):
                 return match[0]
             return 'url("' + self.asset(urljoin(url, target)) + '")'
         return re.sub(r'url\(([^)]+)\)', replace, css)
