@@ -9,6 +9,7 @@ never hardcodes a particular website. See SITES.md for the profile reference.
 import functools
 import hashlib
 import importlib
+import json
 import re
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
@@ -95,8 +96,8 @@ class Site:
         for key in ('path', 'home'):
             require(isinstance(self.resource.get(key), str), 'resource.' + key + ' is required')
         require('{key}' in self.resource['path'], 'resource.path needs a {key} placeholder')
-        for key in ('body', 'lead'):
-            require(isinstance(self.content.get(key), str), 'content.' + key + ' is required')
+        require(isinstance(self.content.get('body'), str), 'content.body is required')
+        require(isinstance(self.content.get('lead', ''), str), 'content.lead must be an XPath when present')
         require(re.search(r'\{(id|key)\}', self.versions.get('url', '')), 'versions.url needs an {id} or {key} placeholder')
         require(isinstance(self.rewrite.get('scripts', []), list), 'rewrite.scripts must be a list')
         for name, spec in self.params.items():
@@ -180,6 +181,8 @@ class Site:
             title = title.replace(old, new)
         if rules.get('strip'):
             title = title.strip()
+        if rules.get('trim'):
+            title = title.strip(rules['trim'])
         if rules.get('capitalize_first'):
             title = title[:1].upper() + title[1:]
         return title
@@ -206,6 +209,10 @@ class Site:
     def internal(self, url):
         return url.hostname in (None, *self.hosts)
 
+    def is_resource(self, key):
+        """Whether a key can name a page (resource.pattern, when the profile sets one)."""
+        return 'pattern' not in self.resource or re.fullmatch(self.resource['pattern'], key) is not None
+
     def key_from_href(self, href):
         """The resource key an internal link names, or None for any other link."""
         url = urlsplit(href)
@@ -213,14 +220,17 @@ class Site:
             return None
         for prefix in self.links['resource_prefixes']:
             if url.path.startswith(prefix):
-                return self.key(unquote(url.path[len(prefix):]))
+                key = self.key(unquote(url.path[len(prefix):]))
+                return key if self.is_resource(key) else None
         return None
 
     def link_allowed(self, value):
         """Whether a rewritten link stays inside this site's own navigation."""
         url = urlsplit(value)
-        return value.startswith('#') or (url.scheme in ('', 'https') and self.internal(url)
-                                         and url.path.startswith(tuple(self.links['rewrite_prefixes'])))
+        if value.startswith('#'):
+            return True
+        return url.scheme in ('', 'https') and self.internal(url) and (
+            url.path.startswith(tuple(self.links['rewrite_prefixes'])) or self.key_from_href(value) is not None)
 
     def asset_path(self, key):
         return self.resource['assets'].replace('{key}', key)
@@ -244,17 +254,21 @@ class Site:
 
     def render_text(self, tree):
         """Raw text derived from an accepted DOM with the profile's default mode."""
-        return self.raw(self.options['raw']['default'])[0](tree)
+        return self.raw(self.options['raw']['default'])[0](tree, self)
 
     def world_limitations(self, settings):
         return [*self.limitations.get('always', []), *self.limitations.get('raw_' + settings['raw'], [])]
 
     def source(self):
-        return getattr(self.module, self.data['source'])
+        """Factory for the site's source adapter, bound to this profile."""
+        return functools.partial(getattr(self.module, self.data['source']), site=self)
+
+    def lead(self, body):
+        """The lead elements of a page body; [] when the profile defines no lead."""
+        return body.xpath(self.content['lead']) if self.content.get('lead') else []
 
     def error(self, name, **fields):
         """Render a profile error template; placeholders use {field} and constants."""
-        import json
         spec = self.errors[name]
         values = {**self.constants, **fields}
 

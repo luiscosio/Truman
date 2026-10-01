@@ -3,7 +3,6 @@ import argparse
 import datetime as dt
 import ipaddress
 import json
-import os
 import random
 import socket
 import subprocess
@@ -24,15 +23,16 @@ def prepare(path, managed=False, policy_path=None):
     path.mkdir(parents=True, exist_ok=False)
     for name in ("tls", "trust"):
         (path / name).mkdir()
-    names = WIKI
+    names, served = WIKI, WIKI
     if managed:
-        from sandbox.site_policy import validate
+        from sandbox.site_policy import WORLD_TRANSPORTS, validate
         policy = json.loads(policy_path.read_bytes())
         names = validate(policy)
+        served = tuple(host for host, entry in names.items() if entry.get("transport") in WORLD_TRANSPORTS)
         durable(path / "sites.json", encoded(policy))
     answers = {name: sorted({v[4][0] for v in socket.getaddrinfo(name, 443, socket.AF_INET, socket.SOCK_STREAM)}) for name in names}
     if any(not ipaddress.ip_address(ip).is_global for ips in answers.values() for ip in ips):
-        raise ValueError("Expected public Wikipedia IPv4 answers")
+        raise ValueError("Expected public IPv4 answers for every listed host")
     durable(path / "dns.json", encoded({"captured_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "source": "Host system DNS at preparation; pinned for replay", "answers": answers}))
     renderer, base_agent = image_id("truman-network-world:local"), image_id("truman-network-agent:local")
@@ -42,7 +42,8 @@ def prepare(path, managed=False, policy_path=None):
         subprocess.run(["docker", "run", "--rm", "--network", "none", "-v", str(path / "tls") + ":/tls",
             "-v", str(path / "trust") + ":/trust",
             "-v", str(ROOT / "sandbox/certificates.sh") + ":/certificate-setup.sh:ro",
-            "-e", "TRUMAN_CA_NAME=" + ("Managed Network Root CA" if managed else "Sandbox Local CA"), renderer, "sh", "-c",
+            "-e", "TRUMAN_CA_NAME=" + ("Managed Network Root CA" if managed else "Sandbox Local CA"),
+            "-e", "TRUMAN_SERVER_NAMES=" + ",".join(served), renderer, "sh", "-c",
             "sh /certificate-setup.sh && chmod 644 /tls/server.key"], check=True, stdout=log, stderr=subprocess.STDOUT, timeout=60)
     tag = "truman-managed-agent:local" if managed else "truman-transparent-agent:local"
     with (path / "agent-build.log").open("xb") as log:
@@ -96,8 +97,9 @@ import hashlib,http.client,json,os,socket,ssl,sys
 from pathlib import Path
 clues={k:v for k,v in os.environ.items() if k.lower() in ('http_proxy','https_proxy','no_proxy','all_proxy','node_extra_ca_certs','ssl_cert_file','requests_ca_bundle','curl_ca_bundle')}
 assert not clues, clues
-ips=sorted({v[4][0] for v in socket.getaddrinfo('en.wikipedia.org',443,socket.AF_INET)})
-conn=http.client.HTTPSConnection('en.wikipedia.org',timeout=10)
+host=sys.argv[3] if len(sys.argv)>3 else 'en.wikipedia.org'
+ips=sorted({v[4][0] for v in socket.getaddrinfo(host,443,socket.AF_INET)})
+conn=http.client.HTTPSConnection(host,timeout=10)
 conn.connect()
 peer=conn.sock.getpeername()[0]
 cert=conn.sock.getpeercert()
@@ -117,7 +119,7 @@ if managed:
  assert socket.getaddrinfo('example.com',443,socket.AF_INET)
  extras['blacklisted_domain_resolves']=True
  import subprocess
- url='https://en.wikipedia.org/wiki/Monarchy_of_the_United_Kingdom'
+ url='https://'+host+'/wiki/Monarchy_of_the_United_Kingdom'
  result=subprocess.run(['curl','--http2','-sS','-o','/tmp/probe-first','-w','%{http_version} %{num_connects}\\n',url,'-o','/tmp/probe-second',url],capture_output=True,check=True,timeout=20)
  assert result.stdout.decode().splitlines()==['2 1','2 0'],result.stdout
  assert Path('/tmp/probe-first').read_bytes()==body==Path('/tmp/probe-second').read_bytes()
@@ -164,8 +166,18 @@ for resolver in ('127.0.0.11','1.1.1.1'):
   dns_bypasses.append(resolver)
  finally:
   udp.close()
-print(json.dumps({'environment_clues':clues,'wikipedia_dns':ips,'peer':peer,'tls_verified':True,'issuer':cert['issuer'],'http_version':response.version,'body_sha256':hashlib.sha256(body).hexdigest(),'provider_tls_verified':True,'provider_http_status':provider_status,'unknown_dns_blocked':True,'unknown_tls_blocked':blocked,'capabilities':0,'uid':os.getuid(),'origin_direct_access_blocked':private_blocked,'dns_bypasses_blocked':dns_bypasses,**extras}))
+print(json.dumps({'environment_clues':clues,'world_dns':ips,'peer':peer,'tls_verified':True,'issuer':cert['issuer'],'http_version':response.version,'body_sha256':hashlib.sha256(body).hexdigest(),'provider_tls_verified':True,'provider_http_status':provider_status,'unknown_dns_blocked':True,'unknown_tls_blocked':blocked,'capabilities':0,'uid':os.getuid(),'origin_direct_access_blocked':private_blocked,'dns_bypasses_blocked':dns_bypasses,**extras}))
 '''
+
+
+def probe_host(folder):
+    """A simulated host to probe: Wikipedia when the run serves it, else the first world host."""
+    policy = folder / "effective-sites.json"
+    if not policy.exists():
+        return WIKI[0]
+    from sandbox.site_policy import WORLD_TRANSPORTS, validate
+    served = [host for host, entry in validate(json.loads(policy.read_bytes())).items() if entry.get("transport") in WORLD_TRANSPORTS]
+    return WIKI[0] if WIKI[0] in served else served[0]
 
 
 def preflight(compose, env, folder, world):
@@ -173,15 +185,16 @@ def preflight(compose, env, folder, world):
     state = json.loads(subprocess.check_output(["docker", "inspect", container], text=True))[0]
     origin = next(iter(state["NetworkSettings"]["Networks"].values()))["IPAddress"]
     probe=PROBE.replace('/wiki/Monarchy_of_the_United_Kingdom','/health') if world.snapshot.get('presentation')=='on-demand-v1' else PROBE
-    result = subprocess.run(compose + ["run", "--rm", "--no-deps", "-T", "agent", "python3", "-c", probe, origin, env.get("TRUMAN_GATEWAY_ENGINE", "transparent")],
+    host = probe_host(folder)
+    result = subprocess.run(compose + ["run", "--rm", "--no-deps", "-T", "agent", "python3", "-c", probe, origin, env.get("TRUMAN_GATEWAY_ENGINE", "transparent"), host],
                             cwd=ROOT, env=env, capture_output=True, timeout=75)
     durable(folder / "preflight.stdout", result.stdout)
     durable(folder / "preflight.stderr", result.stderr)
     if result.returncode:
         raise RuntimeError("Transparent preflight failed; see preflight.stderr")
     observed = json.loads(result.stdout)
-    pinned = json.loads((folder / "network-profile.json").read_bytes())["dns"]["answers"]["en.wikipedia.org"]
-    assert observed["wikipedia_dns"] == pinned and observed["peer"] in pinned
+    pinned = json.loads((folder / "network-profile.json").read_bytes())["dns"]["answers"][host]
+    assert observed["world_dns"] == pinned and observed["peer"] in pinned
     route = world.lookup("GET", "en.wikipedia.org", "/wiki/Monarchy_of_the_United_Kingdom")
     if route:
         assert observed["body_sha256"] == route["body_blob"]

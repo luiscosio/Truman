@@ -57,7 +57,7 @@ def main():
   try:
    for row in rows:
     meta=row['meta'];document=w.assets(row['original'] if condition=='reference' else row['candidate'])
-    text=project(html.fromstring(document,parser=html.HTMLParser(encoding='utf-8')))
+    text=project(html.fromstring(document,parser=html.HTMLParser(encoding='utf-8')),WIKIPEDIA)
     record={**meta['record'],'comment':'','user':''};title=row['title'];attempt,store=w.attempt()
     shutil.copytree(row['source'],attempt/'original-capture')
     durable(attempt/'review.json',encoded({'condition':condition,'source_seal':row['source_seal'],'review':row['review'] if condition=='synthetic' else 'Unchanged original article; same offline asset and text projection transformations.'}))

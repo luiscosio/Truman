@@ -101,7 +101,7 @@ class WorldService:
         self.scenario=self.config['scenario'];self.writer=writer
         self.site=sites.for_scenario(self.scenario);self.settings=self.site.settings(self.scenario)
         self.source_factory=source_factory or self.site.source()
-        self.code=code_files()
+        self.code=code_files();self.linked=[]
         self.readonly=(self.root/'seal.json').exists()
         if self.readonly:verify(self.root)
         self.lock=threading.RLock()
@@ -132,6 +132,30 @@ class WorldService:
     def bytes(self,key):return read_blob(self.root,key)
 
     def facts(self):return dict(self.db.execute('SELECT key,value FROM facts'))
+
+    def link(self,*others):
+        """Review new pages against the committed pages of worlds on other sites.
+
+        Linked worlds must share this world's compiled specification, date and
+        condition; each keeps its own pages, profile and audits.
+        """
+        mine=(sha(encoded(self.scenario.get('world_model'))),self.scenario['as_of'],self.scenario.get('condition'),self.config['source_cutoff'])
+        for other in others:
+            theirs=(sha(encoded(other.scenario.get('world_model'))),other.scenario['as_of'],other.scenario.get('condition'),other.config['source_cutoff'])
+            if other.root.resolve()==self.root.resolve() or other.site.id==self.site.id:raise ValueError('Link worlds on different sites only')
+            if theirs!=mine:raise ValueError('Linked worlds must share the world specification, date, condition and cutoff')
+            if not any(w.root.resolve()==other.root.resolve() for w in self.linked):self.linked.append(other)
+
+    def peer_pages(self):
+        """Committed pages of this world and its linked worlds, for consistency review."""
+        found=[]
+        for world in [self,*self.linked]:
+            reader=sqlite3.connect((world.root/'world.sqlite').resolve().as_uri()+'?mode=ro',uri=True,timeout=60)
+            try:rows=[json.loads(row[0]) for row in reader.execute('SELECT value FROM pages ORDER BY key')]
+            finally:reader.close()
+            found+=[{'title':p['title'],'site':world.site,'revision_at':p.get('effective_date',world.scenario['as_of']),
+                     'document':read_blob(world.root,p['html_blob'])} for p in rows if not p.get('missing')]
+        return found
 
     def pages(self):
         """Accepted current pages, ordered by key; absent topics are excluded."""
@@ -187,6 +211,7 @@ class WorldService:
                 from sandbox.demand_budget import remaining
                 store.deadline=time.monotonic()+float(limits.get('generation_seconds',90))
                 durable(attempt/'context.json',encoded({'title':key,'revision':revision,'facts':self.facts(),
+                    'site':self.site.id,'linked_worlds':[{'site':w.site.id,'root':str(w.root)} for w in self.linked],
                     'scenario_sha256':sha(encoded(self.scenario)),
                     'code':{name:store.blob(data) for name,data in self.code.items()}}))
                 source=self.source_factory(attempt/'source',self.config['source_cutoff'])
@@ -220,10 +245,7 @@ class WorldService:
                                 problems=integrity_issues(self.site,original['document'],document)
                                 if problems:raise Rejected('Content integrity rejected: '+json.dumps(problems))
                                 from sandbox.demand_rewrite import review_peers
-                                peers=[json.loads(row[0]) for row in self.db.execute('SELECT value FROM pages ORDER BY key')]
-                                review_peers(document,canonical,base_scenario['_document_date'],self.scenario,
-                                    [{'title':p['title'],'revision_at':p.get('effective_date',self.scenario['as_of']),'document':self.bytes(p['html_blob'])}
-                                     for p in peers if not p.get('missing')],store)
+                                review_peers(document,canonical,base_scenario['_document_date'],self.scenario,self.peer_pages(),store)
                             break
                         except Rejected as exc:
                             store.event('rewrite_rejected',attempt=retry,error=str(exc))
@@ -248,7 +270,7 @@ class WorldService:
                             store.event('native_representation',source_blob=store.blob(text.encode()),edits_blob=store.blob(encoded(native_edits)),record=record)
                         document=self.assets(document)
                         if not native:
-                            text=represent(html.fromstring(document,parser=html.HTMLParser(encoding='utf-8')))
+                            text=represent(html.fromstring(document,parser=html.HTMLParser(encoding='utf-8')),self.site)
                         if len(document)>7_500_000 or len(text.encode())>7_500_000:raise CoverageMiss('Article exceeds response budget')
                         display=self.scenario.get('display_titles',{}).get(canonical,canonical)
                         if self.scenario.get('rewrite_pipeline')=='world-v2' and self.settings['revision_metadata']!='preserve':

@@ -1,7 +1,8 @@
 """Compare frozen original/rewritten worlds across independent target questions.
 
 All runs share model, network profile, limits and follow-up. Question order
-alternates the first condition; inference sessions remain independent.
+alternates the first condition; inference sessions remain independent. Repeat
+--reference and --synthetic to give each condition linked worlds on several sites.
 """
 import argparse
 import json
@@ -17,7 +18,8 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def main():
  p=argparse.ArgumentParser(description=__doc__)
- for name in ('reference','synthetic','profile'):p.add_argument('--'+name,type=Path,required=True)
+ for name in ('reference','synthetic'):p.add_argument('--'+name,type=Path,action='append',required=True)
+ p.add_argument('--profile',type=Path,required=True)
  p.add_argument('--task-file',type=Path,action='append',required=True)
  p.add_argument('--run-id',required=True);p.add_argument('--model',required=True);p.add_argument('--effort',default='high')
  p.add_argument('--launcher',type=Path,help='Optional local credential wrapper; receives sandbox.run arguments')
@@ -28,10 +30,10 @@ def main():
  tasks=[load_task(path) for path in a.task_file]
  folder=ROOT/'runs'/a.run_id;folder.mkdir(exist_ok=a.resume)
  if (folder/'seal.json').exists():raise ValueError('Suite is already sealed; use a new run ID')
- worlds={condition:getattr(a,condition).resolve() for condition in ('reference','synthetic')}
- for condition,path in worlds.items():
-  assert json.loads((path/'world.json').read_bytes())['scenario'].get('condition','synthetic')==condition
- config={'worlds':{k:{'path':str(v),'seal':verify(v)} for k,v in worlds.items()},'profile_seal':verify(a.profile),'tasks':tasks,'model':a.model,'effort':a.effort,'follow_up':a.follow_up,'seconds':a.seconds,'max_turns':a.max_turns}
+ worlds={condition:[path.resolve() for path in getattr(a,condition)] for condition in ('reference','synthetic')}
+ for condition,paths in worlds.items():
+  for path in paths:assert json.loads((path/'world.json').read_bytes())['scenario'].get('condition','synthetic')==condition
+ config={'worlds':{k:[{'path':str(p),'seal':verify(p)} for p in v] for k,v in worlds.items()},'profile_seal':verify(a.profile),'tasks':tasks,'model':a.model,'effort':a.effort,'follow_up':a.follow_up,'seconds':a.seconds,'max_turns':a.max_turns}
  if a.resume:
   assert json.loads((folder/'configuration.json').read_bytes())==config,'Resume configuration differs'
  else:durable(folder/'configuration.json',encoded(config))
@@ -47,7 +49,8 @@ def main():
      cases.append({'id':identifier,'question':number,'condition':condition,'exit_code':0 if result['status']=='completed' else 1,'seal':digest,'status':result['status']})
      print(identifier,'reused sealed run',flush=True);continue
     command=[sys.executable,str(a.launcher.resolve())] if a.launcher else [sys.executable,'-m','sandbox.run']
-    command+=['--world',str(worlds[condition]),'--task-file',str(path.resolve()),'--network-mode','managed','--network-profile',str(a.profile.resolve()),'--model',a.model,'--effort',a.effort,'--seconds',str(a.seconds),'--max-turns',str(a.max_turns),'--follow-up',a.follow_up,'--run-id',identifier,'--label',f'{condition} / {task["id"]} / neutral follow-up']
+    command+=[arg for path in worlds[condition] for arg in ('--world',str(path))]
+    command+=['--task-file',str(path.resolve()),'--network-mode','managed','--network-profile',str(a.profile.resolve()),'--model',a.model,'--effort',a.effort,'--seconds',str(a.seconds),'--max-turns',str(a.max_turns),'--follow-up',a.follow_up,'--run-id',identifier,'--label',f'{condition} / {task["id"]} / neutral follow-up']
     with (folder/(identifier+'.log')).open('xb') as log:
      completed=subprocess.run(command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,timeout=a.seconds+240)
     run_path=ROOT/'runs'/identifier;case={'id':identifier,'question':number,'condition':condition,'exit_code':completed.returncode}

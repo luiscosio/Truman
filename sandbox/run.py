@@ -6,7 +6,6 @@ import os
 import queue
 import re
 import subprocess
-import threading
 import time
 import uuid
 from pathlib import Path
@@ -37,17 +36,21 @@ def collect_gateway_logs(compose, env, folder):
     return proxy.returncode == 0
 
 
-def attach_world_outcomes(result,root,previous,queue=None):
-    """Include host generation failures even when the client stopped waiting."""
+def attach_world_outcomes(result,worlds,queue=None):
+    """Include host generation failures even when the client stopped waiting.
+
+    worlds pairs each world root with the attempt names that existed before the run.
+    """
     outcomes=[]
-    for attempt in sorted((Path(root)/'attempts').iterdir()):
-        if attempt.name in previous:continue
-        context=json.loads((attempt/'context.json').read_bytes()) if (attempt/'context.json').exists() else {}
-        failure=json.loads((attempt/'failure.json').read_bytes()) if (attempt/'failure.json').exists() else None
-        outcome={'attempt':attempt.name,'title':context.get('title'),
-                 'status':'failed' if failure else 'incomplete' if not (attempt/'seal.json').exists() else 'completed'}
-        if failure:outcome['error']=failure.get('error','Generation failed')
-        outcomes.append(outcome)
+    for root,previous in worlds:
+        for attempt in sorted((Path(root)/'attempts').iterdir()):
+            if attempt.name in previous:continue
+            context=json.loads((attempt/'context.json').read_bytes()) if (attempt/'context.json').exists() else {}
+            failure=json.loads((attempt/'failure.json').read_bytes()) if (attempt/'failure.json').exists() else None
+            outcome={'attempt':attempt.name,'site':context.get('site','wikipedia'),'title':context.get('title'),
+                     'status':'failed' if failure else 'incomplete' if not (attempt/'seal.json').exists() else 'completed'}
+            if failure:outcome['error']=failure.get('error','Generation failed')
+            outcomes.append(outcome)
     result['world_generation']=outcomes
     requests=[]
     if queue is not None:
@@ -55,12 +58,33 @@ def attach_world_outcomes(result,root,previous,queue=None):
             request=json.loads(path.read_bytes())
             response=path.with_name(path.name.replace('.request.json','.response.json'))
             value=json.loads(response.read_bytes()) if response.exists() else {}
-            requests.append({'path':request['path'],'status':value.get('status'),
+            requests.append({'host':request.get('host'),'path':request['path'],'status':value.get('status'),
                              'coverage':value.get('coverage','incomplete')})
         result['world_requests']=requests
     if any(o['status']!='completed' for o in outcomes) or any(r['coverage'] in ('incomplete','generation_failed') for r in requests):
         if result['status']=='completed':result['status']='generation_failed'
     return result
+
+
+def open_worlds(paths):
+    """Open on-demand worlds for one run and link those on different sites."""
+    from sandbox.demand import WorldService
+    worlds=[WorldService(path) for path in paths]
+    try:
+        if len({w.site.id for w in worlds})!=len(worlds):raise ValueError('Give at most one world per site')
+        if len({w.config['renderer_image'] for w in worlds})>1:raise ValueError('Linked worlds must pin the same renderer image')
+        for w in worlds:w.link(*[o for o in worlds if o is not w])
+    except ValueError:
+        for w in worlds:w.close()
+        raise
+    return worlds
+
+
+def unrouted_hosts(worlds,policy):
+    """World hosts the sealed site policy does not send to a world backend."""
+    from sandbox.site_policy import WORLD_TRANSPORTS, validate
+    served={host for host,entry in validate(policy).items() if entry.get('transport') in WORLD_TRANSPORTS}
+    return sorted({host for w in worlds for host in w.site.hosts}-served)
 
 
 def execute(args):
@@ -108,10 +132,11 @@ def execute(args):
         if args.network_mode == "managed":
             compose += ["-f", str(ROOT / "compose.managed.yaml")]
     demand_worker = None
-    world_attempts_before=set()
-    if getattr(args,'world_service',None):
-        world_attempts_before={p.name for p in (args.world_service.root/'attempts').iterdir()}
-        durable(folder/'world-before.json',encoded({'attempts':sorted(world_attempts_before)}))
+    worlds=getattr(args,'world_services',[])
+    world_attempts_before={w.root:{p.name for p in (w.root/'attempts').iterdir()} for w in worlds}
+    if worlds:
+        durable(folder/'world-before.json',encoded({'attempts':sorted(world_attempts_before[worlds[0].root])} if len(worlds)==1 else
+            {'worlds':[{'site':w.site.id,'root':str(w.root),'attempts':sorted(world_attempts_before[w.root])} for w in worlds]}))
         queue_path=folder/'world-queue'
         bridge_path=folder/'demand-bridge.py'
         durable(bridge_path,(ROOT/'sandbox/demand_bridge.py').read_bytes())
@@ -130,7 +155,8 @@ def execute(args):
         "replay_mode": args.replay_mode if args.replay_from else None, "prepare_only": args.prepare_only,
         "label": args.label,
         "generator": getattr(args, "resolved_generator", None),
-        "world_mode": ('replay' if args.world_service.readonly else 'exploration') if getattr(args,'world_service',None) else None,
+        "world_mode": ('replay' if all(w.readonly for w in worlds) else 'exploration') if worlds else None,
+        "worlds": [{"site": w.site.id, "root": str(w.root)} for w in worlds],
         "scenario_sha256": digest(json.dumps(args.resolved_scenario, sort_keys=True)) if getattr(args, "resolved_scenario", None) else None,
         "follow_ups": args.follow_up, "prompt_sha256": digest(system + "\n" + prompt),
         "bundle_manifest_sha256": world.manifest_hash, "truman_version": __version__,
@@ -141,6 +167,9 @@ def execute(args):
     metadata['authentication'] = 'api_key' if env.get('TRUMAN_TARGET_API_KEY') else 'subscription'
     if args.network_mode == "managed":
         metadata["site_policy"] = json.loads((folder / "effective-sites.json").read_bytes())
+        unrouted = unrouted_hosts(worlds, metadata["site_policy"])
+        if unrouted:
+            raise ValueError("Network profile does not route world hosts: " + ", ".join(unrouted))
         metadata["transport"] = "Managed gateway; mitmproxy; pinned website DNS; built-in tools"
     write_json(folder / "experiment.json", metadata)
     if getattr(args, "resolved_scenario", None):
@@ -180,9 +209,9 @@ def execute(args):
     capture_after_seq = 0
 
     try:
-        if getattr(args,'world_service',None):
+        if worlds:
             from sandbox.demand_bridge import Worker
-            demand_worker=Worker([args.world_service],queue_path)
+            demand_worker=Worker(worlds,queue_path)
         print("Starting isolated Wikipedia network", flush=True)
         checked(compose + ["up", "-d", "--wait", "wikipedia", "gateway"] + (["clientnet"] if transparent else []), env, stdout=subprocess.DEVNULL)
         if transparent:
@@ -289,10 +318,14 @@ def execute(args):
         subprocess.run(compose + ["down", "--volumes"], capture_output=True, cwd=ROOT, env=env, timeout=40)
         if demand_worker:
             demand_worker.close()
-            frozen_seal=args.world_service.freeze(folder/'world-snapshot')
-            durable(folder/'world-state.json',encoded({'world':str(args.world_service.root),
-                'facts':args.world_service.facts(),'world_snapshot_seal':frozen_seal,
-                'mode':'replay' if args.world_service.readonly else 'exploration'}))
+            states=[]
+            for w in worlds:
+                # A single world keeps the established layout; several are kept per site.
+                target=folder/'world-snapshot' if len(worlds)==1 else folder/'world-snapshots'/w.site.id
+                target.parent.mkdir(exist_ok=True)
+                states.append({'site':w.site.id,'world':str(w.root),'facts':w.facts(),'world_snapshot_seal':w.freeze(target),
+                               'mode':'replay' if w.readonly else 'exploration'})
+            durable(folder/'world-state.json',encoded({k:v for k,v in states[0].items() if k!='site'} if len(states)==1 else {'worlds':states}))
     try:
         if (capture / "events.jsonl").exists():
             captured = journal(capture / "events.jsonl")
@@ -333,8 +366,8 @@ def execute(args):
             result["status"] = "coverage_incomplete"
         if result['replay_coverage']['generation_failed']:
             result['status']='generation_failed'
-    if getattr(args,'world_service',None):
-        attach_world_outcomes(result,args.world_service.root,world_attempts_before,folder/'world-queue')
+    if worlds:
+        attach_world_outcomes(result,[(w.root,world_attempts_before[w.root]) for w in worlds],folder/'world-queue')
     if args.condition == "synthetic" and not args.replay_from:
         result["simulation"] = {"condition_description": "Qwen-generated counterfactual present-day Wikipedia",
                                 "audit_directory": str(folder / "generation")}
@@ -380,7 +413,8 @@ def main():
     parser.add_argument("--generator", choices=["a", "b", "generate", "rewrite"])
     parser.add_argument("--scenario", type=Path)
     parser.add_argument("--originals", type=Path, help="Sealed original-HTML source bundle for generator B")
-    parser.add_argument('--world',type=Path,help='Persistent on-demand world or frozen world export')
+    parser.add_argument('--world',type=Path,action='append',default=[],
+                        help='Persistent on-demand world or frozen world export; repeat for worlds on other sites, which are linked')
     task_group = parser.add_mutually_exclusive_group()
     task_group.add_argument("--task", choices=["monarch", "prime-minister", "france", "all"], default="monarch")
     task_group.add_argument("--task-file", type=Path, help="JSON target question: id, prompt, required_urls; never sent to the rewriter")
@@ -406,15 +440,15 @@ def main():
         args.task = args.task_definition['id']
     from sandbox.generators import select, scenario_file
     args.resolved_scenario = scenario_file(args.scenario) if args.scenario else None
-    args.world_service=None
+    args.world_services=[]
     if args.world:
         if args.replay_from or args.originals or args.scenario or args.generator not in (None,'b','rewrite') or args.condition not in (None,'synthetic'):
             parser.error('--world supplies its own scenario, generator and state; do not combine with source/replay options')
         if args.network_mode!='managed':parser.error('On-demand worlds require the managed network')
-        from sandbox.demand import WorldService
-        args.world_service=WorldService(args.world)
+        try:args.world_services=open_worlds(args.world)
+        except ValueError as exc:parser.error(str(exc))
         name=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-world-context-'+uuid.uuid4().hex[:8]
-        args.replay_from=args.world_service.bootstrap(ROOT/'data/worlds'/name)
+        args.replay_from=args.world_services[0].bootstrap(ROOT/'data/worlds'/name)
     if args.replay_from:
         from sandbox.archive import load_snapshot
         snapshot, _ = load_snapshot(args.replay_from)
@@ -441,7 +475,7 @@ def main():
         parser.error("Limits must be positive")
     try:return execute(args)
     finally:
-        if args.world_service:args.world_service.close()
+        for w in args.world_services:w.close()
 
 
 if __name__ == "__main__":

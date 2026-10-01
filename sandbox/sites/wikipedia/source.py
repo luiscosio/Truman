@@ -18,8 +18,8 @@ def api(capture, origin, **query):
 
 
 class WikipediaSource:
-    def __init__(self, root, cutoff):
-        site = load('wikipedia')
+    def __init__(self, root, cutoff, site=None):
+        site = site or load('wikipedia')
         self.capture = Capture(root, site)
         self.cutoff = cutoff
         self.origin = site.origin

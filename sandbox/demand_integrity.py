@@ -13,7 +13,7 @@ def article_shape(site, document):
         return {'paragraphs': 0, 'prose_chars': 0, 'lead_chars': 0}
     root = bodies[0]
     paragraphs = [p.text_content().strip() for p in root.xpath('.//p') if not p.xpath('ancestor::table')]
-    lead = root.xpath(site.content['lead'])
+    lead = site.lead(root)
     intro = lead[0].xpath('.//p') if lead else root.xpath('.//p')[:1]
     return {'paragraphs': sum(bool(p) for p in paragraphs), 'prose_chars': sum(map(len, paragraphs)),
             'lead_chars': sum(len(p.text_content().strip()) for p in intro if not p.xpath('ancestor::table'))}

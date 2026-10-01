@@ -605,14 +605,14 @@ def review_peers(document,title,revision_at,scenario,peers,store):
     """
     site=sites.for_scenario(scenario);candidate=peer_document(document,site);jobs=[]
     for peer in peers:
-        if peer['title']==title:continue
-        other=peer_document(peer['document'],site)
+        if peer['site'].id==site.id and peer['title']==title:continue
+        other=peer_document(peer['document'],peer['site'])
         pairs=list(peer_pairs(candidate,other))
         jobs.extend((peer,index,len(pairs),pair) for index,pair in enumerate(pairs))
     def compare(item):
         peer,index,parts,(left,right)=item
         compared,other_part,shared=shared_peer_fields(left,right)
-        result=ask(store,scenario,'peer_reviewer','cross-page-'+peer['title']+'-'+str(index),common(scenario)+
+        result=ask(store,scenario,'peer_reviewer','cross-page-'+peer['site'].id+'-'+peer['title'].replace('/','_')+'-'+str(index),common(scenario)+
         'Compare these two pages for incompatible claims about shared entities, relationships and events. '
         'Different detail or silence is not a contradiction. Respect each revision date and historical context. '
         'Each reported contradiction must quote two explicit incompatible statements, one from each page. '
@@ -621,12 +621,12 @@ def review_peers(document,title,revision_at,scenario,peers,store):
         'If repairing the candidate cannot resolve the issue without changing the committed page or the world rules, say so. '
         'Set accepted=true if and only if issues is empty.',
         {'world_model':{k:v for k,v in scenario['world_model'].items() if k!='unknowns'},'rules':scenario['facts'],
-         'committed':{'title':peer['title'],'revision_date':peer['revision_at'],'document':other_part},
-         'candidate':{'title':title,'revision_date':revision_at,'document':compared},
+         'committed':{'site':peer['site'].name,'title':peer['title'],'revision_date':peer['revision_at'],'document':other_part},
+         'candidate':{'site':site.name,'title':title,'revision_date':revision_at,'document':compared},
          'shared_fields':shared,
          'encoding':'An integer entry in either document is a zero-based index into shared_fields, replacing the same [field,value] pair. Expand references before comparing; all fields and block positions are retained.'},
             obj({'accepted':{'type':'boolean'},'issues':arr(S)}))
-        store.event('cross_page_review',candidate=title,peer=peer['title'],part=index,parts=parts,review=result)
+        store.event('cross_page_review',candidate=title,peer=peer['title'],peer_site=peer['site'].id,part=index,parts=parts,review=result)
         if not result['accepted'] or result['issues']:
             raise Rejected('Cross-page consistency rejected: '+json.dumps(result['issues']))
     if jobs:

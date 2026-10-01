@@ -24,19 +24,19 @@ class ArchiveTests(unittest.TestCase):
             durable(p/'context.json',encoded({'title':name}))
             durable(p/'failure.json',encoded({'error':'provider timeout'}));seal(p)
         result={'status':'completed','agent_status':'completed','network_requests':[{'status':200}]}
-        attach_world_outcomes(result,root,{'old'})
+        attach_world_outcomes(result,[(root,{'old'})])
         self.assertEqual(result['status'],'generation_failed')
         self.assertEqual(result['agent_status'],'completed')
         self.assertEqual([o['title'] for o in result['world_generation']],['new'])
-        clean={'status':'completed'};attach_world_outcomes(clean,root,{'old','new'})
+        clean={'status':'completed'};attach_world_outcomes(clean,[(root,{'old','new'})])
         self.assertEqual(clean['status'],'completed')
         queue=self.root/'queue';queue.mkdir()
         durable(queue/'late.request.json',encoded({'path':'/wiki/Unfinished'}))
-        clean={'status':'completed'};attach_world_outcomes(clean,root,{'old','new'},queue)
+        clean={'status':'completed'};attach_world_outcomes(clean,[(root,{'old','new'})],queue)
         self.assertEqual(clean['status'],'generation_failed')
         self.assertEqual(clean['world_requests'][0]['coverage'],'incomplete')
         durable(queue/'late.response.json',encoded({'status':503,'coverage':'generation_failed'}))
-        clean={'status':'completed'};attach_world_outcomes(clean,root,{'old','new'},queue)
+        clean={'status':'completed'};attach_world_outcomes(clean,[(root,{'old','new'})],queue)
         self.assertEqual(clean['status'],'generation_failed')
 
     def test_normalized_proxy_capture_cannot_be_frozen_as_wire_replay(self):

@@ -102,7 +102,7 @@ class Context:
             if node.getparent() is not None:
                 node.drop_tree()
         if intro:
-            lead = root.xpath(self.site.content['lead'])
+            lead = self.site.lead(root)
             paragraphs = lead[0].xpath('.//p') if lead else root.xpath('.//p')[:3]
         else:
             paragraphs = root.xpath('.//p')
@@ -115,7 +115,13 @@ class Context:
             return self.world.revision(int(version))
         names = [self.vars.get(name) if kind == 'path' else self.param(name)
                  for kind, _, name in (source.partition('.') for source in self.options.get('key', ['path.key']))]
-        return self.world.ensure(next(filter(None, names), self.site.resource['home']))
+        key = next(filter(None, names), None)
+        if key is None:
+            return self.world.ensure(self.site.resource['home'])
+        if not self.site.is_resource(self.site.key(key)):
+            from sandbox.demand import CoverageMiss
+            raise CoverageMiss('Path does not name a page')
+        return self.world.ensure(key)
 
     def html(self, article):
         if article.get('missing'):
@@ -140,6 +146,14 @@ def asset(ctx):
     return ctx.out(ctx.world.bytes(stored['blob']), mime=stored['mime'])
 
 
+def canonical_redirect(ctx):
+    """301 to a page's canonical path, as sites do for a missing trailing slash."""
+    key = ctx.site.key(ctx.vars['key'])
+    if not ctx.site.is_resource(key):
+        return unsupported(ctx)
+    return ctx.out(b'', 301, 'text/html; charset=utf-8', headers={'Location': ctx.site.path(key)})
+
+
 def page_html(ctx):
     return ctx.html(ctx.resource())
 
@@ -159,7 +173,7 @@ def page_other(ctx):
     return unsupported(ctx)
 
 
-HANDLERS = {'unsupported': unsupported, 'home': home, 'asset': asset,
+HANDLERS = {'unsupported': unsupported, 'home': home, 'asset': asset, 'canonical_redirect': canonical_redirect,
             'page_html': page_html, 'page_raw': page_raw, 'page_other': page_other}
 
 

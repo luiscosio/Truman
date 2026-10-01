@@ -23,6 +23,12 @@ content:
   heading: '//article//h1'
   title_suffix: ' | Example News'
 
+# Where publication and modification dates are found, in order: an XPath, or
+# ld+json:<field> of the page's schema.org article.
+article:
+  published: ['ld+json:datePublished', '//meta[@property="article:published_time"]/@content']
+  modified: ['ld+json:dateModified', '//meta[@property="article:modified_time"]/@content']
+
 links:
   resource_prefixes: [/articles/]
   rewrite_prefixes: [/articles/, /search]

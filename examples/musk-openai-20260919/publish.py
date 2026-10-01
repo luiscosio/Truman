@@ -32,7 +32,7 @@ def main():
    durable(attempt/'manual-review.json',encoded(review))
    store.event('original',html_blob=store.blob(original),source_blob=store.blob(read_blob(source/'audit',meta['source_blob'])))
    edits=store.blob((a.candidates/f'{i}-edits.json').read_bytes());store.event('manual_candidate',html_blob=store.blob(candidate),edits_blob=edits)
-   document=w.assets(candidate);text=project(html.fromstring(document,parser=html.HTMLParser(encoding='utf-8')))
+   document=w.assets(candidate);text=project(html.fromstring(document,parser=html.HTMLParser(encoding='utf-8')),WIKIPEDIA)
    record={**meta['record'],'comment':'','user':''};title=title_key(meta['title'])
    page={'title':title,'display_title':title,'page_id':meta['page_id'],'revision_id':record['revid'],'revision_at':record['timestamp'],'sha256':sha(text.encode()),'source_url':'https://en.wikipedia.org/w/index.php?oldid='+str(record['revid'])}
    value={'title':title,'page':page,'record':record,'html_blob':w.blob(document),'text_blob':w.blob(text.encode()),'attempt':attempt.name,'edits_blob':edits,'facts_sha256':sha(encoded(w.facts())),'world_sha256':sha(encoded(w.scenario['world_model'])),'effective_date':w.scenario['as_of'],'dependencies':sorted(w.facts()),'validation_status':'manual_reviewed','generation_method':'manual'}

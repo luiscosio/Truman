@@ -11,7 +11,6 @@ import re
 from urllib.parse import unquote, urlsplit
 from lxml import etree, html
 
-from sandbox.sites import load
 from sandbox.sites.wikipedia.native import lead, rewrite_source as native_source
 from sandbox.sites.wikipedia.source import WikipediaSource
 
@@ -29,13 +28,12 @@ def miss(reason):
 
 # Representations
 
-def project(tree):
+def project(tree, site):
     """Render-derived wikitext: HTML tables/prose plus native wiki links/headings.
 
     This intentionally does not claim to reconstruct original template source.
     Wikipedia accepts these HTML elements within wikitext.
     """
-    site = load('wikipedia')
     root = copy.deepcopy(tree.xpath(site.content['body'])[0])
     for node in list(root.xpath('.//script|.//style|.//svg|.//noscript')):
         node.drop_tree()
@@ -228,7 +226,7 @@ def parse(ctx, a):
     if 'text' in prop:
         root = ctx.body(a)
         if section == '0':
-            sections = root.xpath(ctx.site.content['lead'])
+            sections = ctx.site.lead(root)
             if not sections:
                 raise miss('Lead section unavailable')
             root = sections[0]

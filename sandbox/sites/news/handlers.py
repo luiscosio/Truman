@@ -1,7 +1,10 @@
-"""News publication: article acquisition, plain-text representation, search, feed and sitemap.
+"""News publications: article acquisition, plain-text representation, search, feed and sitemap.
 
-Published articles have no public revision history. Acquisition captures the
-article as published and keeps it only if it was published by the world date.
+Any profile can use this module (handlers: sandbox.sites.news.handlers); every
+selector comes from that profile. Published articles have no public revision
+history. Acquisition captures the article as published now and keeps it only if
+it was published by the world date. A later modification is recorded, because
+the captured text may include it.
 """
 import datetime as dt
 import json
@@ -10,20 +13,18 @@ from lxml import etree, html
 
 from sandbox.archive import sha
 from sandbox.rewrite_capture import Capture, FetchError
-from sandbox.sites import load
 
 __all__ = ['NewsSource', 'plain_text', 'search_page', 'feed', 'sitemap']
 
 
 def utc(value):
-    moment = dt.datetime.fromisoformat(value.replace('Z', '+00:00'))
+    moment = dt.datetime.fromisoformat(value.strip().replace('Z', '+00:00'))
     moment = moment.replace(tzinfo=moment.tzinfo or dt.timezone.utc).astimezone(dt.timezone.utc)
     return moment.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def structured(document):
+def structured(tree):
     """The page's schema.org article object, or {} when it has none."""
-    tree = html.fromstring(document, parser=html.HTMLParser(encoding='utf-8'))
     for node in tree.xpath('//script[@type="application/ld+json"]'):
         try:
             data = json.loads(node.text or '')
@@ -35,10 +36,23 @@ def structured(document):
     return {}
 
 
+def metadata(tree, selectors):
+    """First value found by a profile's selectors: an XPath, or ld+json:<field>."""
+    for selector in selectors:
+        if selector.startswith('ld+json:'):
+            value = structured(tree).get(selector[len('ld+json:'):])
+        else:
+            found = tree.xpath(selector)
+            value = found[0] if found else None
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 class NewsSource:
-    def __init__(self, root, cutoff):
-        self.site = load('news')
-        self.capture = Capture(root, self.site)
+    def __init__(self, root, cutoff, site):
+        self.site = site
+        self.capture = Capture(root, site)
         self.cutoff = cutoff
 
     def url(self, key):
@@ -55,15 +69,25 @@ class NewsSource:
             if exc.status in (404, 410):
                 return {'missing': True, 'title': key}
             raise
+        tree = html.fromstring(raw, parser=html.HTMLParser(encoding='utf-8'))
+        dates = self.site.data.get('article', {})
+        published = metadata(tree, dates.get('published', []))
+        modified = metadata(tree, dates.get('modified', []))
+        record = {'revid': int(sha(raw)[:12], 16), 'timestamp': self.cutoff}
+        if published:
+            record['published'] = record['timestamp'] = utc(published)
+            if record['published'] > self.cutoff:
+                # Not yet published at the world date.
+                return {'missing': True, 'title': key}
+        if modified:
+            record['modified'] = utc(modified)
+            if record['modified'] <= self.cutoff:
+                record['timestamp'] = max(record['timestamp'], record['modified'])
+            else:
+                # Only the current version can be captured; it may include later edits.
+                record['modified_after_cutoff'] = True
         document, assets = self.capture.offline(raw, url)
-        metadata = structured(document)
-        dated = metadata.get('dateModified') or metadata.get('datePublished')
-        timestamp = utc(dated) if dated else self.cutoff
-        if timestamp > self.cutoff:
-            # Not yet published at the world date.
-            return {'missing': True, 'title': key}
-        return {'title': key, 'page_id': int(sha(key.encode())[:12], 16),
-                'record': {'revid': int(sha(raw)[:12], 16), 'timestamp': timestamp},
+        return {'title': key, 'page_id': int(sha(key.encode())[:12], 16), 'record': record,
                 'source': raw.decode('utf-8', 'replace'), 'document': document, 'source_sha256': sha(raw), 'assets': assets}
 
     def history(self, title, limit):
@@ -79,9 +103,9 @@ class NewsSource:
         raise ValueError('News search is answered from the captured corpus')
 
 
-def plain_text(tree):
+def plain_text(tree, site):
     """Article prose as plain paragraphs; news pages have no markup source."""
-    body = tree.xpath(load('news').content['body'])
+    body = tree.xpath(site.content['body'])
     paragraphs = body[0].xpath('.//p') if body else []
     return '\n\n'.join(p.text_content().strip() for p in paragraphs if p.text_content().strip())
 
@@ -100,7 +124,7 @@ def articles(ctx):
 
 
 def search_page(ctx):
-    query = ctx.param('q')
+    query = ctx.param(ctx.options.get('query', 'q'))
     root = etree.Element('html', lang='en')
     head = etree.SubElement(root, 'head')
     etree.SubElement(head, 'meta', charset='utf-8')
@@ -130,8 +154,8 @@ def feed(ctx):
         etree.SubElement(item, 'title').text = headline(ctx, a)
         etree.SubElement(item, 'link').text = ctx.site.url(a['title'])
         etree.SubElement(item, 'guid').text = ctx.site.url(a['title'])
-        moment = dt.datetime.fromisoformat(a['record']['timestamp'].replace('Z', '+00:00'))
-        etree.SubElement(item, 'pubDate').text = format_datetime(moment, usegmt=True)
+        published = a['record'].get('published', a['record']['timestamp'])
+        etree.SubElement(item, 'pubDate').text = format_datetime(dt.datetime.fromisoformat(published.replace('Z', '+00:00')), usegmt=True)
         etree.SubElement(item, 'description').text = ctx.extract(a, True)[:500]
     return ctx.out(etree.tostring(rss, encoding='utf-8', xml_declaration=True), mime='application/rss+xml; charset=utf-8')
 

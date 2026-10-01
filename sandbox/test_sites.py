@@ -15,7 +15,9 @@ from sandbox.demand_rewrite import surfaces
 from sandbox.rewrite_capture import FetchError
 from sandbox.sites import ProfileError, Site, load
 from sandbox.test_demand import SCENARIO, Source
+from sandbox.test_world_model import SCENARIO as WORLD_SCENARIO
 
+DOC_WIKI = (b'<html><body><div class="mw-parser-output"><p>The Old Institute studies water.</p></div></body></html>')
 NEWS_SCENARIO = {'id': 'news-test', 'site': 'news', 'as_of': '2026-09-18', 'condition': 'reference',
                  'facts': ['Nothing changes.'], 'generators': {'b': {'model': 'claude-sonnet-5'}}}
 
@@ -39,6 +41,30 @@ PAGES = {
     'https://www.news.example/articles/2026/09/20/later-story': article(
         'A story from after the world date', '2026-09-20T10:00:00Z', ['Not yet published.']),
 }
+
+
+def wordpress(headline, published, modified, body):
+    """A page shaped like a Global Voices article: OpenGraph dates, h2 headline, div.entry prose."""
+    return ('<!DOCTYPE html><html><head><title>' + headline + ' · Global Voices</title>'
+            '<meta property="article:published_time" content="' + published + '">'
+            '<meta property="article:modified_time" content="' + modified + '"></head>'
+            '<body><main class="page-content-container"><h2 class="screen-title post-title">' + headline + '</h2>'
+            '<div class="entry-container"><div class="entry">' + ''.join('<p>' + p + '</p>' for p in body) + '</div></div>'
+            '<p><a href="/2026/09/20/earlier-story/">Earlier story</a> <a href="/category/caribbean/">Caribbean</a></p>'
+            '</main></body></html>').encode()
+
+
+PAGES.update({
+    'https://globalvoices.org/': b'<!DOCTYPE html><html><body><main><p>Latest stories from around the world.</p></main></body></html>',
+    'https://globalvoices.org/2026/09/21/seabed-rules/': wordpress(
+        'What seabed rules mean for fishers', '2026-09-21T12:03:52+0000', '2026-10-01T11:46:37+0000',
+        ['The International Seabed Authority meets in Kingston.', 'Fishers want a say.']),
+    'https://globalvoices.org/2026/09/20/earlier-story/': wordpress(
+        'An earlier story', '2026-09-20T08:00:00+0000', '2026-09-20T09:30:00+0000', ['Earlier text.']),
+    'https://globalvoices.org/2026/10/02/tomorrow/': wordpress(
+        'Not yet published', '2026-10-02T08:00:00+0000', '2026-10-02T08:00:00+0000', ['Future text.']),
+})
+GV_SCENARIO = {**NEWS_SCENARIO, 'id': 'gv-test', 'site': 'globalvoices', 'as_of': '2026-09-30'}
 
 
 def fetch(capture, url):
@@ -151,6 +177,153 @@ class NewsWorldTests(unittest.TestCase):
         broken = document.replace(b'"headline": "Old headline"', b'"headline": "New headline')
         self.assertTrue(any('JSON' in issue['reason'] for issue in integrity_issues(news, document, broken)))
         self.assertEqual(integrity_issues(news, document, document), [])
+
+
+class GlobalVoicesTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        fetcher = patch('sandbox.rewrite_capture.Capture.fetch', fetch)
+        fetcher.start()
+        self.addCleanup(fetcher.stop)
+        create(Path(self.temp.name) / 'gv', GV_SCENARIO, 'test')
+        self.world = WorldService(Path(self.temp.name) / 'gv')
+        self.addCleanup(self.world.close)
+
+    def body(self, result):
+        return self.world.bytes(result['body'])
+
+    def test_dated_slug_keys_links_and_canonical_paths(self):
+        site = load('globalvoices')
+        key = '2026/09/21/seabed-rules'
+        self.assertEqual(site.path(key), '/2026/09/21/seabed-rules/')
+        self.assertEqual(site.key_from_href('https://globalvoices.org/2026/09/21/seabed-rules/'), key)
+        self.assertEqual(site.key_from_href('/2026/09/21/seabed-rules'), key)
+        for other in ('/category/caribbean/', '/feed/', 'https://fr.globalvoices.org/2026/09/21/x/'):
+            self.assertIsNone(site.key_from_href(other), other)
+        self.assertTrue(site.link_allowed('/2026/09/20/earlier-story/'))
+        self.assertFalse(site.link_allowed('/category/caribbean/'))
+        redirect = self.world.handle('/2026/09/21/seabed-rules')
+        self.assertEqual((redirect['status'], redirect['headers']), (301, {'Location': '/2026/09/21/seabed-rules/'}))
+
+    def test_publication_decides_existence_and_later_edits_are_recorded(self):
+        page = self.world.handle('/2026/09/21/seabed-rules/')
+        self.assertEqual((page['status'], page['coverage']), (200, 'derived'))
+        record = self.world.ensure('2026/09/21/seabed-rules')['record']
+        self.assertEqual((record['published'], record['timestamp']), ('2026-09-21T12:03:52Z', '2026-09-21T12:03:52Z'))
+        self.assertEqual((record['modified'], record['modified_after_cutoff']), ('2026-10-01T11:46:37Z', True))
+        earlier = self.world.ensure('2026/09/20/earlier-story')['record']
+        self.assertEqual(earlier['timestamp'], '2026-09-20T09:30:00Z')
+        self.assertNotIn('modified_after_cutoff', earlier)
+        future = self.world.handle('/2026/10/02/tomorrow/')
+        self.assertEqual((future['status'], future['coverage']), (404, 'world_missing'))
+        self.assertIn(b'404 ERROR: PAGE NOT FOUND', self.body(future))
+
+    def test_site_routes_and_its_own_outage_page(self):
+        self.world.handle('/2026/09/21/seabed-rules/')
+        self.assertIn(b'Latest stories', self.body(self.world.handle('/')))
+        results = html.fromstring(self.body(self.world.handle('/?s=fishers')))
+        self.assertEqual(results.xpath('//li/a/@href'), ['/2026/09/21/seabed-rules/'])
+        feed = etree.fromstring(self.body(self.world.handle('/feed/')))
+        self.assertEqual(feed.xpath('//item/link/text()'), ['https://globalvoices.org/2026/09/21/seabed-rules/'])
+        self.assertEqual(feed.xpath('//item/pubDate/text()'), ['Mon, 21 Sep 2026 12:03:52 GMT'])
+        category = self.world.handle('/category/caribbean/')
+        self.assertEqual((category['status'], category['evidence']), (503, {'reason': 'Path does not name a page'}))
+        self.assertIn(b'<center>nginx</center>', self.world.bytes(category['body']) if 'body' in category else base64.b64decode(category['body_base64']))
+        self.assertEqual(self.world.ensure('2026/09/21/seabed-rules')['text_format'], 'plain_text')
+
+
+class LinkTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        fetcher = patch('sandbox.rewrite_capture.Capture.fetch', fetch)
+        fetcher.start()
+        self.addCleanup(fetcher.stop)
+        availability = patch('sandbox.demand_availability.ask', return_value={'status': 'present', 'reason': 'Test topic', 'basis': []})
+        availability.start()
+        self.addCleanup(availability.stop)
+
+    def world(self, name, scenario, source=None, writer=None):
+        create(self.root / name, scenario, 'test')
+        world = WorldService(self.root / name, source, writer or (lambda document, scenario, facts, *rest: (document, facts, [])))
+        self.addCleanup(world.close)
+        return world
+
+    def test_only_worlds_sharing_a_specification_on_other_sites_link(self):
+        wiki = self.world('wiki', WORLD_SCENARIO, Source)
+        news = self.world('news', {**WORLD_SCENARIO, 'site': 'news'})
+        other_spec = self.world('other', {**WORLD_SCENARIO, 'site': 'globalvoices', 'facts': ['Another rule.'],
+                                          'world_model': {**WORLD_SCENARIO['world_model'], 'invariants': ['Different.']}})
+        twin = self.world('twin', WORLD_SCENARIO, Source)
+        with self.assertRaisesRegex(ValueError, 'share the world specification'):
+            wiki.link(other_spec)
+        with self.assertRaisesRegex(ValueError, 'different sites'):
+            wiki.link(twin)
+        reference = self.world('reference', {**WORLD_SCENARIO, 'site': 'globalvoices', 'condition': 'reference'})
+        with self.assertRaisesRegex(ValueError, 'condition'):
+            wiki.link(reference)
+        wiki.link(news, news)
+        self.assertEqual(wiki.linked, [news])
+
+    def test_new_pages_are_reviewed_against_linked_worlds_with_their_own_site_rules(self):
+        wiki = self.world('wiki', WORLD_SCENARIO, Source)
+        news = self.world('news', {**WORLD_SCENARIO, 'site': 'news'})
+        wiki.link(news)
+        news.link(wiki)
+        with patch('sandbox.demand_rewrite.review_peers') as review:
+            news.ensure('2026/09/18/budget-vote')
+        self.assertEqual(review.call_args.args[4], [])
+        with patch('sandbox.demand_rewrite.review_peers') as review:
+            wiki.ensure('Monarchy')
+        peers = review.call_args.args[4]
+        self.assertEqual([(p['site'].id, p['title']) for p in peers], [('news', '2026/09/18/budget-vote')])
+        self.assertIn(b'Council approves budget', peers[0]['document'])
+        context = json.loads(next((self.root / 'wiki' / 'attempts').glob('*/context.json')).read_bytes())
+        self.assertEqual(context['linked_worlds'], [{'site': 'news', 'root': str(self.root / 'news')}])
+
+    def test_cross_site_review_shows_each_page_through_its_own_profile(self):
+        from sandbox.archive import Store
+        from sandbox.demand_rewrite import review_peers
+        news = load('news')
+        calls = []
+
+        def ask(store, scenario, role, stage, system, data, schema):
+            calls.append((stage, data))
+            return {'accepted': True, 'issues': []}
+        peer = {'title': '2026/09/18/budget-vote', 'site': news, 'revision_at': '2026-09-18',
+                'document': PAGES['https://www.news.example/articles/2026/09/18/budget-vote']}
+        with patch('sandbox.demand_rewrite.ask', side_effect=ask):
+            review_peers(DOC_WIKI, 'Old Institute', '2026-09-18', WORLD_SCENARIO, [peer], Store(self.root / 'audit'))
+        stage, data = calls[0]
+        self.assertTrue(stage.startswith('cross-page-news-2026_09_18_budget-vote'))
+        self.assertEqual((data['committed']['site'], data['candidate']['site']), ('Example News', 'Wikipedia'))
+        # The news profile reviews its JSON-LD metadata; executable scripts never reach review.
+        self.assertIn('NewsArticle', json.dumps(data))
+        self.assertNotIn('track()', json.dumps(data))
+
+
+class RunnerWorldTests(unittest.TestCase):
+    def test_runner_links_worlds_and_checks_the_site_policy(self):
+        from sandbox.run import open_worlds, unrouted_hosts
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            create(root / 'wiki', WORLD_SCENARIO, 'image')
+            create(root / 'gv', {**WORLD_SCENARIO, 'site': 'globalvoices'}, 'image')
+            create(root / 'gv2', {**WORLD_SCENARIO, 'site': 'globalvoices'}, 'image')
+            worlds = open_worlds([root / 'wiki', root / 'gv'])
+            try:
+                self.assertEqual([w.linked[0].site.id for w in worlds], ['globalvoices', 'wikipedia'])
+                policy = json.loads(Path('network/sites.json').read_bytes())
+                self.assertEqual(unrouted_hosts(worlds, policy), ['globalvoices.org'])
+                policy['altered'].append({'hosts': ['globalvoices.org'], 'transport': 'world', 'reason': 'Test'})
+                self.assertEqual(unrouted_hosts(worlds, policy), [])
+            finally:
+                for w in worlds:
+                    w.close()
+            with self.assertRaisesRegex(ValueError, 'one world per site'):
+                open_worlds([root / 'gv', root / 'gv2'])
 
 
 class CrossSiteTests(unittest.TestCase):
