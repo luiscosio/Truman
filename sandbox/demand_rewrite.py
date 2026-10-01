@@ -13,7 +13,8 @@ from sandbox.rewrite_model import OutputTruncated
 
 PLAN=obj({'summary':S,'changes':arr(obj({'blocks':arr({'type':'integer'}),'reason':S,'facts':arr(S)}))})
 PATCH=obj({'edits':arr(obj({'id':{'type':'integer'},'text':S})),
-           'remove_blocks':arr({'type':'integer'})})
+           'remove_blocks':arr({'type':'integer'}),
+           'move_blocks':arr(obj({'block':{'type':'integer'},'after':{'type':'integer'}}))})
 ISSUE=obj({'blocks':arr({'type':'integer'}),'reason':S})
 REVIEW=obj({'issues':arr(ISSUE),
             'claims':arr(obj({'key':S,'value':S,'blocks':arr({'type':'integer'})}))})
@@ -256,6 +257,31 @@ def repair_scope(flagged,scopes):
     return set().union(*(scopes.get(b,{b}) for b in flagged)) if flagged else set()
 
 
+def move_blocks(nodes,moves,movable,apply_changes=True):
+    """Move whole blocks after another block of the same kind, e.g. a list item between groups.
+
+    A reclassification often changes which list, table or navigation group an
+    entry belongs to; text edits alone cannot relocate it.
+    """
+    owners={n['block']:n['block_node'] for n in nodes}
+    if not isinstance(moves,list):raise Rejected('Invalid block move')
+    for move in moves:
+        block,after=move.get('block'),move.get('after')
+        if type(block) is not int or type(after) is not int or block not in movable or after not in owners or block==after:
+            raise Rejected('Invalid block move: move only blocks listed in removable_blocks, after a block in this batch')
+        owner,target=owners[block],owners[after]
+        if owner.tag!=target.tag or owner.getparent() is None or target.getparent() is None:
+            raise Rejected('A block can only move after a block of the same kind')
+        if any(p is owner for p in target.iterancestors()):raise Rejected('A block cannot move inside itself')
+    if not apply_changes:return []
+    log=[]
+    for move in moves:
+        owner,target=owners[move['block']],owners[move['after']]
+        target.addnext(owner)
+        log.append({'field':'move','block':move['block'],'after':move['after'],'original':'','replacement':owner.text_content()[:300]})
+    return log
+
+
 def remove_blocks(nodes,blocks,allowed,apply_changes=True,scopes=None):
     """Remove whole semantic units, preserving surrounding text and stable IDs."""
     owners={n['block']:n['block_node'] for n in nodes}
@@ -453,6 +479,9 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                         'whose subject did not occur or does not belong in the world. Do not leave an ineligible entity in a membership table '
                         'or blank out individual cells when the whole row must go. Retain unrelated facts and historical events. '
                         'Do not also edit fields inside a block you remove. Only remove IDs listed in removable_blocks. '
+                        'When the world changes which list, table or navigation group an entry belongs to, use move_blocks to move '
+                        'that whole entry (a block listed in removable_blocks) after a block of the same kind in its new group, '
+                        'rather than deleting it; the entry keeps its text and links. Return an empty move_blocks otherwise. '
                         'Do not invent link targets: use a target already present in the original document, a declared world title with a nonempty source_title, or unlink it. '
                         'When removing a false supporting citation, remove its associated label as well as its URL. '
                         'Keep inline whitespace and sentence boundaries. Fix only issues visible in this batch; other batches handle other blocks. '
@@ -469,13 +498,14 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                     if depth>=2 or len(groups)<2:raise
                     midpoint=len(groups)//2
                     store.event('semantic_chunk_split',batch=str(batch_index),depth=depth,blocks=len(groups))
-                    combined=[];removals=[]
+                    combined=[];removals=[];moves=[]
                     for suffix,group in [('a',set(groups[:midpoint])),('b',set(groups[midpoint:]))]:
                         part=[n for n in batch if n['block'] in group]
                         part_feedback=[i for i in local_feedback if not i['blocks'] or group.intersection(i['blocks'])]
                         subjob=(str(batch_index)+suffix,part,{k:v for k,v in rendered.items() if k in group},part_feedback)
-                        subedits,_,subremovals=patch_batch(subjob,depth+1);combined.extend(subedits);removals.extend(subremovals)
-                    return combined,allowed,removals
+                        subedits,_,subremovals,submoves=patch_batch(subjob,depth+1)
+                        combined.extend(subedits);removals.extend(subremovals);moves.extend(submoves)
+                    return combined,allowed,removals,moves
                 try:
                     # A requested new destination must exist in the routing
                     # contract. Unlink unsupported destinations rather than
@@ -499,6 +529,12 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                     if not isinstance(removals,list) or any(type(b) is not int or b not in removable for b in removals):
                         raise Rejected('A requested removal is forbidden. Rewrite that block to preserve its independent facts, following the review feedback.')
                     remove_blocks(nodes,removals,allowed_blocks,apply_changes=False,scopes=block_scopes)
+                    moves=patch.get('move_blocks',[])
+                    if any(isinstance(m,dict) and m.get('block') in removals for m in moves if isinstance(moves,list)):
+                        raise Rejected('A block cannot be both moved and removed')
+                    move_blocks(nodes,moves,set(removable),apply_changes=False)
+                    if any(isinstance(m,dict) and m.get('after') not in allowed_blocks for m in moves):
+                        raise Rejected('Move a block only after a block in this batch')
                     removed_owners={n['block_node'] for n in nodes if n['block'] in removals}
                     patch['edits']=[]
                     for edit in normalized:
@@ -507,14 +543,14 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                             store.event('edit_superseded_by_block_removal',node=i)
                         else:patch['edits'].append(edit)
                     apply(nodes,patch['edits'],allowed,site,known_targets,apply_changes=False)
-                    return patch['edits'],allowed,removals
+                    return patch['edits'],allowed,removals,moves
                 except Rejected as exc:
                     error=str(exc)
                     if retry:raise
         workers=max(1,min(4,scenario.get('on_demand',{}).get('model_concurrency',4)))
         with ThreadPoolExecutor(max_workers=workers) as pool:
             proposals=list(pool.map(patch_batch,jobs))
-        removals={b for _,_,blocks in proposals for b in blocks}
+        removals={b for _,_,blocks,_ in proposals for b in blocks}
         if removals:
             removal_review=ask(store,scenario,'preservation_reviewer',f'removal-review-{repair}',prompt+
                 'Review only proposed whole-block deletions BEFORE they happen. Reject deletion of introductions '
@@ -536,7 +572,7 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                  'original_blocks':[b for b in original_readable if b['block'] in removals],
                  'other_proposed_edits':[{'block':nodes[e['id']]['block'],'field':nodes[e['id']]['field'],
                                           'before':nodes[e['id']]['original'],'after':e['text']}
-                                         for changes,_,_ in proposals for e in changes],
+                                         for changes,_,_,_ in proposals for e in changes],
                  'requested_removals':[b for b in readable_document(nodes) if b['block'] in removals]},
                 obj({'decisions':arr(obj({'block':{'type':'integer'},
                     'decision':{'type':'string','enum':['allow','rewrite']},'reason':S}))}))
@@ -549,9 +585,10 @@ def rewrite(document,scenario,facts,title,store,revision_at):
                 feedback=removal_review['issues'];selected|=repair_scope({b for i in feedback for b in i['blocks']},block_scopes)
                 blocked_removals.update(b for i in feedback for b in i['blocks'])
                 continue
-        for patch,allowed,removals in proposals:
+        for patch,allowed,removals,moves in proposals:
             edits.extend(apply(nodes,patch,allowed,site,known_targets))
             edits.extend(remove_blocks(nodes,removals,{nodes[i]['block'] for i in allowed},scopes=block_scopes))
+            edits.extend(move_blocks(nodes,moves,{m['block'] for m in moves}))
         edits.extend(reconcile_footnotes(tree,site,cited))
         final=document_packet(nodes)
         review=ask(store,scenario,'reviewer',f'page-review-{repair}',prompt+

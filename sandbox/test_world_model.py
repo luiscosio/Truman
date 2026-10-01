@@ -52,6 +52,21 @@ class WorldModelTests(unittest.TestCase):
         self.assertNotIn(body,repair_scope({row},scopes))
         self.assertEqual(repair_scope({body},scopes),{body})
 
+    def test_entries_move_between_groups_without_losing_their_links(self):
+        from sandbox.demand_rewrite import move_blocks
+        page=html.fromstring('<div class="mw-parser-output"><ul class="planets"><li><a href="/wiki/Neptune">Neptune</a></li></ul>'
+                             '<ul class="dwarfs"><li><a href="/wiki/Ceres">Ceres</a></li><li><a href="/wiki/Pluto">Pluto</a></li></ul>'
+                             '<p>Body.</p></div>')
+        nodes=surfaces(page,load('wikipedia'))
+        block=lambda text:next(n['block'] for n in nodes if n['original']==text)
+        pluto,neptune,body=block('Pluto'),block('Neptune'),block('Body.')
+        for bad in ([{'block':pluto,'after':body}],[{'block':pluto,'after':pluto}],[{'block':body,'after':neptune}]):
+            with self.assertRaises(Rejected):move_blocks(nodes,bad,{pluto})
+        log=move_blocks(nodes,[{'block':pluto,'after':neptune}],{pluto})
+        self.assertEqual(page.xpath('//ul[@class="planets"]/li/a/@href'),['/wiki/Neptune','/wiki/Pluto'])
+        self.assertEqual(page.xpath('//ul[@class="dwarfs"]/li/a/text()'),['Ceres'])
+        self.assertEqual(log[0]['field'],'move')
+
     def test_alias_collisions_reject(self):
         spec=copy.deepcopy(SPEC);spec['entities'].append({**spec['entities'][0],'id':'other'})
         validate(spec)
