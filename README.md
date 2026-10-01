@@ -8,10 +8,12 @@ and live rewriting for new requests.
 
 The current implementation focuses on Wikipedia, using historical or rewritten
 pages and reference comparisons. Each website is a YAML profile plus small handlers;
-see [Site profiles](SITES.md). A generic news profile exists with offline fixture
-tests, but no other site has served an agent run, and cross-site validation remains
-to be implemented. See [standing product requirements](AGENTS.md) for the scope that
-should guide future changes.
+see [Site profiles](SITES.md). Worlds on different sites can share one compiled world
+and review new pages against each other. One paired agent run has used two sites at
+once, Wikipedia and Global Voices ([ISA experiment](examples/isa-mining-code-20261001/README.md));
+broader cross-site validation (more sites, questions and request orders) remains to be
+done. See [standing product requirements](AGENTS.md) for the scope that should guide
+future changes.
 
 The first experiment asks who is currently the British monarch. The `all` task adds the UK prime minister and the French president. Each condition gets a fresh conversation with the same prompt, date, tool schema, and limits.
 

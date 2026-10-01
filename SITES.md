@@ -8,12 +8,14 @@ A simulated website is a folder under `sandbox/sites/<id>/`:
 | `handlers.py` | Code for formats YAML cannot express (an API's JSON shape, an export format, a feed), the source adapter that acquires original pages, and representation hooks. |
 
 Shared code (`sandbox/demand*.py`, `sandbox/rewrite_capture.py`) reads the profile through
-`sandbox.sites.load(id)` and never names a website. Two profiles exist:
+`sandbox.sites.load(id)` and never names a website. A handlers module can serve several
+profiles: sources and hooks receive the profile that uses them. Three profiles exist:
 
 | Profile | Status |
 | --- | --- |
 | `wikipedia` | English Wikipedia. Used by every recorded experiment. A refactor into this profile reproduced 1,550 recorded responses from five frozen worlds byte for byte (`python -m sandbox.route_golden`). |
-| `news` | A generic news publication on reserved `.example` hosts: dated articles, JSON-LD metadata, RSS, a sitemap and corpus search, no edit history. Covered by offline fixture tests only. It has not served a real publication or an agent run. Copy it and set real hosts for an experiment. |
+| `globalvoices` | Global Voices, a real news site (articles under CC BY 3.0), using the shared news handlers. Captured live and served to an agent alongside Wikipedia in [the ISA experiment](examples/isa-mining-code-20261001/README.md). |
+| `news` | A template for news publications on reserved `.example` hosts, with JSON-LD metadata. Covered by offline fixture tests; copy it for a new publication. |
 
 ## Choosing a site
 
@@ -45,9 +47,12 @@ hosts: [www.news.example]      # first host is the origin
 ```
 
 **resource**: page identity.
-`path` (with `{key}`) is the page URL; `home` is the key served for `/` or an empty key;
-`assets` is where captured images are served. `key` normalizes titles (`replace`, `strip`,
-`capitalize_first`) and `encode` turns a key into a URL segment (`replace`, `safe`).
+`path` (with `{key}`) is the page URL; `home` is the key served for an empty key and
+`home_path` its URL when it differs from `path`; `assets` is where captured images are
+served. `pattern` (a regular expression) limits which keys name pages, so paths such as
+`/feed/` or `/category/x/` never trigger acquisition. `key` normalizes titles (`replace`,
+`strip`, `trim` characters, `capitalize_first`) and `encode` turns a key into a URL segment
+(`replace`, `safe`).
 
 **content**: XPath selectors. `body` finds the page body, `lead` (relative to body) the
 introduction, `drop` editor banners removed at capture and before rewriting, `extract_drop`
@@ -55,8 +60,13 @@ nodes left out of plain-text extracts, `heading` the visible title. `title_suffi
 the title in `<title>`.
 
 **links**: `resource_prefixes` are paths that name a page key directly;
-`rewrite_prefixes` are the paths a rewritten link may point to. Links to other hosts are
-never invented.
+`rewrite_prefixes` are further paths a rewritten link may point to (a link to any page key
+is always allowed). Links to other hosts are never invented.
+
+**article** (news handlers): where publication and modification dates are found, in
+order, as XPaths or `ld+json:<field>`. Publication decides whether an article exists at
+the world date. A capture modified after the world date is kept and marked
+`modified_after_cutoff`, since only the current version can be fetched.
 
 **versions**: `url` is a version's canonical source URL, with `{origin}`, `{id}` (version
 id) and `{key}` (encoded page key).
@@ -114,8 +124,9 @@ key comes from, in order: `path.<var>`, `query.<param>`, else `home`), `version`
 parameter naming a version), `lenient`, `reason` (for `unsupported`).
 
 Shared handlers: `page_html`, `page_raw`, `page_other` (resolves the page, then reports the
-action unsupported), `asset`, `home` (redirect to the home page) and `unsupported`. Any
-other name must exist in the site's handlers module.
+action unsupported), `asset`, `home` (redirect to the home page), `canonical_redirect`
+(301 to a page's canonical path) and `unsupported`. Any other name must exist in the
+site's handlers module.
 
 ## Writing handlers and sources
 
@@ -126,7 +137,7 @@ A handler takes a `Context` (`sandbox/demand_routes.py`) and returns
 the simulation does not serve. Read only accepted world pages: a handler must never
 return an unmodified upstream original for a rewritten page.
 
-A source is constructed as `Source(attempt_root, cutoff)` and provides:
+A source is constructed as `Source(attempt_root, cutoff, site=profile)` and provides:
 
 | Method | Returns |
 | --- | --- |
@@ -139,18 +150,35 @@ Fetch through `sandbox.rewrite_capture.Capture(root, site)`, which records every
 response, refuses hosts outside `capture.hosts` and raises `FetchError` with the HTTP
 status.
 
-## Running a site in the managed network
+Representation hooks take `(tree, site)` for DOM-derived text.
 
-1. Add the hosts to `network/sites.json` with `"transport": "world"`, and prepare a new
-   network profile so DNS answers and certificates cover them.
-2. Create a world from a scenario naming the site (`python -m sandbox.demand create`).
-3. One bridge serves several worlds: `Worker([wikipedia_world, news_world], queue)`
-   routes each request by its `Host` and refuses hosts no world serves.
+## Several sites in one world
 
-`sandbox/run.py` still takes a single `--world`; a multi-site run needs it to accept
-several. Cross-site consistency between worlds is not yet reviewed: each world checks
-new pages against its own committed pages, and worlds share only the compiled world
-specification.
+Compile one world specification, then create a world per site from it (same
+`world_model`, date and condition, a different `site`). Linked worlds review each new
+page against the committed pages of every linked world, each shown through its own
+profile, so a news article cannot contradict an encyclopedia page that is already
+accepted. Linking is recorded in every attempt's `context.json`.
+
+```bash
+python -m sandbox.demand_prepare --world <news world> --link <wikipedia world> --pages front <article key> --depth 0 --report <report.json>
+```
+
+## Running sites in the managed network
+
+1. Write a site policy listing every simulated host with `"transport": "world"` (see
+   `examples/isa-mining-code-20261001/sites.json`). Prepare a network profile from it:
+   DNS answers are pinned for every listed host and the server certificate names every
+   world host.
+
+   ```bash
+   python -m sandbox.transparent --managed --profile <new profile> --site-policy <sites.json>
+   ```
+
+2. Pass one `--world` per site. The runner links them, serves them through one bridge
+   (requests are routed by `Host`; a host no world serves gets 403), freezes each into
+   `world-snapshots/<site>`, and refuses to start if the policy does not route a world's
+   hosts. `sandbox.demand_pair` takes `--reference` and `--synthetic` once per site.
 
 ## Checking a change
 
