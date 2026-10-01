@@ -1,0 +1,111 @@
+# NASA Science (science.nasa.gov). A WordPress site of US government works, which
+# are generally not subject to copyright in the United States; NASA logos and
+# insignia keep their own restrictions. Uses the shared news handlers.
+# Reference: docs/guides/SITES.md.
+schema_version: 1
+id: nasascience
+name: NASA Science
+handlers: sandbox.sites.news.handlers
+source: NewsSource
+hosts: [science.nasa.gov]
+
+resource:
+  # Page keys are slug paths: dwarf-planets/pluto, dwarf-planets/pluto/facts
+  path: /{key}/
+  pattern: '[a-z0-9-]+(/[a-z0-9-]+)*'
+  home: front
+  home_path: /
+  assets: /wp-content/uploads/truman/{key}
+  key: {strip: true, trim: /}
+  encode: {safe: /-}
+
+content:
+  body: '//article[descendant::p]'
+  extract_drop: './/script|.//style|.//figure|.//aside|.//form'
+  heading: '//h1'
+  title_suffix: ' - NASA Science'
+
+article:
+  published: ['//meta[@property="article:published_time"]/@content']
+  modified: ['//meta[@property="article:modified_time"]/@content']
+
+links:
+  resource_prefixes: [/]
+  rewrite_prefixes: [/feed/]
+
+versions:
+  url: '{origin}/{key}/'
+
+options:
+  raw:
+    default: text
+    modes:
+      text: {hook: plain_text, format: plain_text}
+  revision_metadata:
+    default: blank
+    modes: {blank: {}}
+  search:
+    default: captured_corpus
+    modes: {captured_corpus: {}}
+
+limitations:
+  always:
+    - Pages are captured as published at acquisition time; a later modification is recorded but earlier text is not recoverable.
+    - The feed and sitemap list only pages accepted into this world. Site search is Google, which is outside the world.
+
+rewrite:
+  blocks: [p, li, figure, figcaption, blockquote, h1, h2, h3, h4, title, meta, time]
+  attributes: [href, title, alt, aria-label, content, datetime]
+  skip: [script, style, svg, path, noscript]
+  # The schema.org metadata repeats the description; it is reviewed with the page.
+  scripts: [application/ld+json]
+
+capture:
+  # Stylesheets import Google Fonts; capture inlines them, the agent never contacts these hosts.
+  hosts: [science.nasa.gov, assets.science.nasa.gov, www.nasa.gov, images-assets.nasa.gov, fonts.googleapis.com, fonts.gstatic.com]
+  user_agent: TrumanResearch/0.2
+  # WordPress serves resized copies; used only for images over the capture budget.
+  oversized_image_query: w=1280
+
+prepare:
+  paths: ['{path}']
+
+params:
+  limit: {type: int, default: 10, min: 1, max: 50}
+
+messages:
+  int: {code: badrequest, info: 'Invalid value "{value}" for "{name}".'}
+
+errors:
+  invalid_request:
+    status: 400
+    mime: text/html; charset=UTF-8
+    body: <!doctype html><title>Bad Request</title><h1>Bad Request</h1>
+  not_found:
+    status: 404
+    mime: text/html; charset=UTF-8
+    body: |
+      <!DOCTYPE html>
+      <html lang="en-US"><head><meta charset="UTF-8"><title>Page not found - NASA Science</title></head>
+      <body class="error404"><main id="primary" class="site-main"><h1>404</h1>
+      <p>The cosmic object you were looking for has disappeared beyond the event horizon.</p><p><a href="/">Return to NASA Science</a></p></main></body></html>
+  # Served by nginx; its standard error page is the realistic outage.
+  unavailable:
+    status: 503
+    mime: text/html
+    body: |
+      <html>
+      <head><title>503 Service Temporarily Unavailable</title></head>
+      <body>
+      <center><h1>503 Service Temporarily Unavailable</h1></center>
+      <hr><center>nginx</center>
+      </body>
+      </html>
+
+routes:
+  - {path: /, handler: page_html, options: {key: []}}
+  - {path: /feed/, handler: feed}
+  - {path: /sitemap.xml, handler: sitemap}
+  - {path: '/wp-content/uploads/truman/{key}', handler: asset}
+  - {path: '/{key}/', handler: page_html}
+  - {path: '/{key}', handler: canonical_redirect}

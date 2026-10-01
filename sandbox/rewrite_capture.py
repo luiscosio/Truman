@@ -35,10 +35,15 @@ class FetchError(subprocess.CalledProcessError):
         self.url, self.status = url, status
 
 
+class TooLarge(ValueError):
+    """A response over the capture budget."""
+
+
 class Capture:
     def __init__(self, root, site):
         self.hosts, self.user_agent = tuple(site.capture['hosts']), site.capture['user_agent']
         self.drop, self.keep_scripts = site.content.get('drop'), tuple(site.rewrite.get('scripts', []))
+        self.resize = site.capture.get('oversized_image_query')
         self.store = Store(root / "http")
         self.cache = {}
         # Reuse verified bodies from previous sealed captures, including failed
@@ -76,12 +81,18 @@ class Capture:
             statuses = re.findall(rb'^HTTP/[0-9.]+ ([0-9]{3})', response_headers, re.M)
             raise FetchError(url, result.returncode, int(statuses[-1]) if statuses else None)
         if len(result.stdout) > 8_000_000:
-            raise ValueError("Capture body too large")
+            raise TooLarge("Capture body too large")
         self.cache[url] = result.stdout
         return result.stdout
 
     def asset(self, url):
-        raw = self.fetch(url)
+        try:
+            raw = self.fetch(url)
+        except TooLarge:
+            # Sites that serve resized images (profile capture.oversized_image_query) get one smaller request.
+            if not self.resize:
+                raise
+            raw = self.fetch(url + ('&' if urlsplit(url).query else '?') + self.resize)
         mime = mimetypes.guess_type(urlsplit(url).path)[0] or "application/octet-stream"
         return "data:" + mime + ";base64," + base64.b64encode(raw).decode()
 

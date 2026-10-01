@@ -234,6 +234,30 @@ class GlobalVoicesTests(unittest.TestCase):
         self.assertEqual(self.world.ensure('2026/09/21/seabed-rules')['text_format'], 'plain_text')
 
 
+class NasaScienceTests(unittest.TestCase):
+    def test_slug_paths_and_metadata_review_follow_the_profile(self):
+        site = load('nasascience')
+        self.assertEqual(site.url('dwarf-planets/pluto/facts'), 'https://science.nasa.gov/dwarf-planets/pluto/facts/')
+        self.assertEqual(site.key_from_href('https://science.nasa.gov/dwarf-planets/pluto/'), 'dwarf-planets/pluto')
+        self.assertIsNone(site.key_from_href('https://www.nasa.gov/image-article/x/'))
+        self.assertEqual(site.rewrite['scripts'], ['application/ld+json'])
+
+    def test_oversized_images_are_refetched_resized_only_when_the_profile_allows(self):
+        from sandbox.rewrite_capture import Capture, TooLarge
+        calls = []
+
+        def fetch(capture, url):
+            calls.append(url)
+            if 'w=1280' not in url:
+                raise TooLarge('Capture body too large')
+            return b'small'
+        with tempfile.TemporaryDirectory() as temp, patch.object(Capture, 'fetch', fetch):
+            self.assertTrue(Capture(Path(temp), load('nasascience')).asset('https://science.nasa.gov/a.jpg?x=1').startswith('data:image/jpeg'))
+            self.assertEqual(calls, ['https://science.nasa.gov/a.jpg?x=1', 'https://science.nasa.gov/a.jpg?x=1&w=1280'])
+            with self.assertRaises(TooLarge):
+                Capture(Path(temp) / 'wiki', load('wikipedia')).asset('https://upload.wikimedia.org/a.jpg')
+
+
 class LinkTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
