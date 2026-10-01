@@ -16,6 +16,7 @@ from sandbox.archive import Store, encoded, journal, verify
 from sandbox.demand import WorldService, create, fork_world
 from sandbox.demand_bridge import Worker, publish
 from sandbox.demand_integrity import integrity_issues
+from sandbox.sites import load
 from sandbox.demand_model import Rejected
 from sandbox.demand_rewrite import rewrite
 from sandbox.demand_world import normalize
@@ -57,9 +58,9 @@ class ReliabilityTests(unittest.TestCase):
         world=self.world({**SCENARIO,'absent_titles':['Excluded event'],'on_demand':{'request_seconds':.15}})
         world.ensure('Seed');started=threading.Event();release=threading.Event()
         def slow(*args):started.set();release.wait(3);return writer(*args)
-        world.writer=slow;worker=Worker(world,self.root/'queue')
+        world.writer=slow;worker=Worker([world],self.root/'queue')
         def submit(name,path):
-            p=worker.queue/(name+'.request.json');publish(p,{'path':path,'method':'GET'});return p.with_name(name+'.response.json')
+            p=worker.queue/(name+'.request.json');publish(p,{'host':'en.wikipedia.org','path':path,'method':'GET'});return p.with_name(name+'.response.json')
         def response(path):
             until=time.monotonic()+1
             while not path.exists() and time.monotonic()<until:time.sleep(.01)
@@ -104,8 +105,8 @@ class ReliabilityTests(unittest.TestCase):
     def test_integrity_checks_detect_blank_leads_and_mass_deletion(self):
         source=('<div class="mw-parser-output"><section data-mw-section-id="0"><p>Introduction.</p></section>'+''.join('<p>Independent historical details, preserved. </p>' for _ in range(30))+'</div>').encode()
         broken=b'<div class="mw-parser-output"><section data-mw-section-id="0"></section><p>Remnant.</p></div>'
-        self.assertEqual(len(integrity_issues(source,broken)),2)
-        self.assertEqual(integrity_issues(source,source.replace(b'Introduction.',b'Updated introduction.')),[])
+        self.assertEqual(len(integrity_issues(load('wikipedia'),source,broken)),2)
+        self.assertEqual(integrity_issues(load('wikipedia'),source,source.replace(b'Introduction.',b'Updated introduction.')),[])
 
     def test_deleted_lead_can_be_restored_on_repair_even_if_review_misses_it(self):
         source=b'<div class="mw-parser-output"><section data-mw-section-id="0"><p>Original introduction.</p></section><p>Unrelated facts.</p></div>'

@@ -4,8 +4,10 @@ from pathlib import Path
 from lxml import html
 from sandbox.archive import Store,encoded,durable,sha,seal,verify,read_blob
 from sandbox.demand import create,WorldService
-from sandbox.demand_model import project
+from sandbox.sites.wikipedia.handlers import project
 from sandbox.demand_integrity import integrity_issues,article_shape
+from sandbox.sites import load
+WIKIPEDIA=load('wikipedia')
 from sandbox.demand_prepare import prepare
 from truman.world import title_key
 P=Path(__file__).resolve().parent;base=P.parent
@@ -19,7 +21,7 @@ w=WorldService(root);results=[]
 try:
  for i in range(9):
   source=sources/str(i);o=json.loads((source/'original.json').read_bytes());original=read_blob(source/'audit',o['document_blob']);candidate=(P/f'{i}-candidate.html').read_bytes()
-  problems=integrity_issues(original,candidate);assert not problems,(i,problems)
+  problems=integrity_issues(WIKIPEDIA,original,candidate);assert not problems,(i,problems)
   attempt,store=w.attempt();shutil.copytree(source,attempt/'original-capture');durable(attempt/'original.json',encoded(o))
   before=html.fromstring(original,parser=html.HTMLParser(encoding='utf-8'));after=html.fromstring(candidate,parser=html.HTMLParser(encoding='utf-8'))
   def paragraphs(t):return [' '.join(p.text_content().split()) for p in t.xpath('//p[not(ancestor::table)]') if p.text_content().strip()]
@@ -36,7 +38,7 @@ try:
   page={'title':title,'display_title':display,'page_id':o['page_id'],'revision_id':record['revid'],'revision_at':record['timestamp'],'sha256':sha(text.encode()),'source_url':'https://en.wikipedia.org/w/index.php?oldid='+str(record['revid'])}
   value={'title':title,'page':page,'record':record,'html_blob':w.blob(document),'text_blob':w.blob(text.encode()),'attempt':attempt.name,'edits_blob':store.blob((P/f'{i}-edits.json').read_bytes()),'facts_sha256':sha(encoded(w.facts())),'world_sha256':sha(encoded(s['world_model'])),'effective_date':s['as_of'],'dependencies':sorted(w.facts()),'validation_status':'manual_reviewed','generation_method':'manual'}
   w.db.execute('INSERT INTO pages VALUES (?,?)',(title,json.dumps(value)));w.db.execute('INSERT INTO versions VALUES (?,?,?)',(title,record['revid'],json.dumps(value)));w.db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(display,title));durable(attempt/'accepted.json',encoded(value));seal(attempt)
-  results.append({'title':title,'shape':article_shape(candidate),'source_shape':article_shape(original),'unchanged_paragraphs':unchanged,'original_paragraphs':len(original_ps),'manual_review':str((attempt/'manual-review.json').relative_to(root))})
+  results.append({'title':title,'shape':article_shape(WIKIPEDIA,candidate),'source_shape':article_shape(WIKIPEDIA,original),'unchanged_paragraphs':unchanged,'original_paragraphs':len(original_ps),'manual_review':str((attempt/'manual-review.json').relative_to(root))})
  # Logical absence from the unchanged world rule: Charles has never been proclaimed king.
  title='Proclamation of accession of Charles III'
  value={'title':title,'missing':True,'reason':'scenario-absent','validation_status':'manual_reviewed','basis':'World rule 2: Charles has not acceded or been proclaimed king.'}

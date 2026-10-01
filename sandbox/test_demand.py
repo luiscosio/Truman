@@ -126,15 +126,14 @@ class DemandTests(unittest.TestCase):
             self.assertEqual(revids(base+'&rvlimit=2&rvstart=2026-09-20T00:00:00Z')[0],[92,91])
             self.assertEqual(revids(base+'&rvlimit=2&rvdir=newer&rvstartid=60')[0],[60,61])
             self.assertEqual(revids(base+'&rvdir=older&rvend=2026-09-26T00:00:00Z&rvlimit=50')[0],[100,99,98])
-            queries=[]
-            def api(self,**query):
-                queries.append(query)
-                return {'query':{'pages':[{'title':'Monarchy','revisions':[{'revid':3,'timestamp':'2001-01-01T00:00:00Z'},{'revid':7,'timestamp':'2001-01-02T00:00:00Z'},
-                                                                           {'revid':9,'timestamp':'2001-01-03T00:00:00Z'}]}]}}
-            with patch.object(Source,'api',api,create=True):
+            ranges=[]
+            def history_range(self,title,params):
+                ranges.append((title,params))
+                return [{'revid':3,'timestamp':'2001-01-01T00:00:00Z'},{'revid':7,'timestamp':'2001-01-02T00:00:00Z'},
+                        {'revid':9,'timestamp':'2001-01-03T00:00:00Z'}]
+            with patch.object(Source,'history_range',history_range,create=True):
                 self.assertEqual(revids(base+'&rvdir=newer&rvlimit=2'),([3,7],'20010103000000|9'))
-            self.assertEqual({k:queries[0][k] for k in ('rvdir','rvlimit','rvend')},{'rvdir':'newer','rvlimit':3,'rvend':'2026-09-18T23:59:59Z'})
-            self.assertNotIn('content',queries[0]['rvprop'])
+            self.assertEqual(ranges,[('Monarchy',{'rvdir':'newer','rvlimit':3,'rvend':'2026-09-18T23:59:59Z'})])
             frozen=self.root.parent/'enumeration-frozen';self.world.freeze(frozen);snapshot=WorldService(frozen)
             try:
                 beyond=snapshot.handle(base+'&rvdir=newer&rvlimit=2&rvstartid=1')
@@ -179,7 +178,19 @@ class DemandTests(unittest.TestCase):
 
     def test_bridge_does_not_emit_python_server_fingerprint(self):
         from sandbox.demand_bridge import Handler
-        self.assertEqual(Handler.version_string(object()),'MediaWiki')
+        from sandbox.managed_http import normalized_headers
+        banner=Handler.version_string(object())
+        self.assertNotIn('Python',banner)
+        self.assertNotIn(('Server',banner),normalized_headers([('Server',banner)],0))
+
+    def test_range_metadata_never_requests_content_or_passes_the_cutoff(self):
+        from sandbox.sites.wikipedia.source import WikipediaSource
+        from unittest.mock import Mock
+        source=object.__new__(WikipediaSource);source.cutoff='2026-09-18T00:00:00Z'
+        source.api=Mock(return_value={'query':{'pages':[{'revisions':[{'revid':9,'timestamp':'2026-09-19T00:00:00Z'},
+                                                                      {'revid':8,'timestamp':'2026-09-17T00:00:00Z'}]}]}})
+        self.assertEqual(source.history_range('Monarchy',{'rvdir':'older','rvlimit':3}),[{'revid':8,'timestamp':'2026-09-17T00:00:00Z'}])
+        self.assertNotIn('content',source.api.call_args.kwargs['rvprop'])
 
     def test_inline_boundaries_preserve_original_whitespace(self):
         self.assertEqual(preserve_spacing(' is exercised by the King, the ','is exercised by the Queen, the'),
@@ -323,9 +334,9 @@ class DemandTests(unittest.TestCase):
         self.assertTrue(any(e['kind']=='patch_rejected' for e in journal(store.root/'events.jsonl')))
 
     def test_acquisition_pins_cutoff_and_rejects_future_revision(self):
-        from sandbox.demand_source import WikipediaSource
+        from sandbox.sites.wikipedia.source import WikipediaSource
         from unittest.mock import Mock
-        source=object.__new__(WikipediaSource);source.cutoff='2026-09-18T00:00:00Z'
+        source=object.__new__(WikipediaSource);source.cutoff='2026-09-18T00:00:00Z';source.origin='https://en.wikipedia.org'
         source.capture=Mock()
         record={'revid':5,'timestamp':'2026-09-17T12:00:00Z','slots':{'main':{'content':'original'}}}
         source.api=Mock(return_value={'query':{'pages':[{'title':'Monarchy','pageid':42,'revisions':[record]}]}})

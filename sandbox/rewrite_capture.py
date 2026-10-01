@@ -1,4 +1,8 @@
-"""Capture revision-pinned Wikipedia HTML and assets before an offline run."""
+"""Capture pages and their assets as offline documents.
+
+Capture is site-neutral: hosts, banner selectors and the user agent come from a
+site profile. capture() prepares legacy Wikipedia bundle worlds.
+"""
 import argparse
 import base64
 import copy
@@ -10,19 +14,22 @@ import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from urllib.parse import urlencode, urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from lxml import html, etree
 from sandbox.archive import Store, durable, encoded, seal, verify, sha
 from sandbox.generators import scenario_file
+from sandbox.sites import profile
 from truman.world import World
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTENT = '//*[contains(concat(" ", normalize-space(@class), " "), " mw-parser-output ")][descendant::p]'
+# Legacy Wikipedia-only modules read this; on-demand worlds use their site profile.
+CONTENT = profile('wikipedia')['content']['body']
 
 
 class Capture:
-    def __init__(self, root):
+    def __init__(self, root, hosts, drop, user_agent):
+        self.hosts, self.drop, self.user_agent = tuple(hosts), drop, user_agent
         self.store = Store(root / "http")
         self.cache = {}
         # Reuse verified bodies from previous sealed captures, including failed
@@ -42,7 +49,7 @@ class Capture:
         from sandbox.demand_budget import remaining
         timeout=remaining(self,150)
         host = urlsplit(url).hostname or ""
-        if host not in ("en.wikipedia.org", "upload.wikimedia.org", "thumb.wikimedia.org"):
+        if host not in self.hosts:
             raise ValueError("Unapproved capture host: " + host)
         if url in self.cache:
             self.store.event('source_fetch', url=url, exit_code=0, cached=True, response_blob=self.store.blob(self.cache[url]))
@@ -51,7 +58,7 @@ class Capture:
             header_path=Path(directory)/'headers'
             result = subprocess.run(["curl.exe" if __import__('os').name == 'nt' else "curl",
                 "--silent", "--show-error", "--fail", "--max-time", str(min(45,timeout)), "--retry", "2",
-                '--dump-header',str(header_path),"--proto", "=https", "-A", "TrumanWikipediaResearch/0.2", url],
+                '--dump-header',str(header_path),"--proto", "=https", "-A", self.user_agent, url],
                 capture_output=True, timeout=timeout)
             response_headers=header_path.read_bytes() if header_path.exists() else b''
         self.store.event("source_fetch", url=url, exit_code=result.returncode,
@@ -61,13 +68,6 @@ class Capture:
             raise ValueError("Capture body too large")
         self.cache[url] = result.stdout
         return result.stdout
-
-    def api(self, **query):
-        result = json.loads(self.fetch("https://en.wikipedia.org/w/api.php?" + urlencode(
-            {"format": "json", "formatversion": 2, **query})))
-        if "error" in result:
-            raise ValueError(str(result["error"]))
-        return result
 
     def asset(self, url):
         raw = self.fetch(url)
@@ -89,7 +89,7 @@ class Capture:
         # article markup, skin, references and navigation, but disable active JS.
         for node in tree.xpath('//script | //link[@rel="preload" or @rel="dns-prefetch" or @rel="preconnect"]'):
             node.drop_tree()
-        for node in tree.xpath('//*[starts-with(@id,"mw-revision-info") or @id="mw-revision-nav"]'):
+        for node in tree.xpath(self.drop) if self.drop else []:
             node.drop_tree()
         for node in tree.xpath('//link[@rel="stylesheet"]'):
             css = self.css(urljoin(url, node.get('href')))
@@ -118,7 +118,12 @@ class Capture:
 def capture(scenario, destination):
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=False)
-    recorder = Capture(destination)
+    from sandbox.sites.wikipedia.source import api as mediawiki
+    site = profile('wikipedia')
+    recorder = Capture(destination, site['capture']['hosts'], site['content']['drop'], site['capture']['user_agent'])
+    origin = 'https://' + site['hosts'][0]
+    def api(**query):
+        return mediawiki(recorder, origin, **query)
     world = World(ROOT / scenario['source_bundle'], scenario.get('source_condition', 'historical'))
     titles = list(dict.fromkeys(scenario['seed_pages'] + scenario.get('support_pages', [])))
     if len(titles) > scenario.get('preparation', {}).get('max_pages', 30):
@@ -136,21 +141,21 @@ def capture(scenario, destination):
                 page = copy.deepcopy(world.pages[title]); wiki = world._text[title]
                 revision = page['revision_id']
             else:
-                data = recorder.api(action='query', titles=title, prop='revisions', rvprop='ids|timestamp|content', rvslots='main')
+                data = api(action='query', titles=title, prop='revisions', rvprop='ids|timestamp|content', rvslots='main')
                 entry = data['query']['pages'][0]; rev = entry['revisions'][0]
                 revision = rev['revid']; wiki = rev['slots']['main']['content']
                 page = {'title': title, 'revision_id': revision, 'revision_at': rev['timestamp'],
                         'page_id': entry['pageid'], 'sha256': sha(wiki.encode()),
-                        'source_url': 'https://en.wikipedia.org/w/index.php?oldid=' + str(revision)}
-            url = 'https://en.wikipedia.org/w/index.php?oldid=' + str(revision)
+                        'source_url': origin + '/w/index.php?oldid=' + str(revision)}
+            url = origin + '/w/index.php?oldid=' + str(revision)
             raw = recorder.fetch(url)
             # Verify the fetched article revision, not just the URL.
             if not re.search(rb'"wgRevisionId"\s*:\s*' + str(revision).encode() + rb'\b', raw):
                 raise ValueError('HTML revision differs from source wikitext: ' + title)
-            data = recorder.api(action='query', revids=revision, prop='revisions', rvprop='ids|timestamp|user|comment')
+            data = api(action='query', revids=revision, prop='revisions', rvprop='ids|timestamp|user|comment')
             entry = data['query']['pages'][0]
             page['page_id'] = entry['pageid']
-            history = recorder.api(action='query', titles=entry['title'], prop='revisions',
+            history = api(action='query', titles=entry['title'], prop='revisions',
                 rvstartid=revision, rvlimit=10, rvprop='ids|timestamp|user|comment|content', rvslots='main')['query']['pages'][0]['revisions']
             if history[0]['revid'] != revision or sha(history[0]['slots']['main']['content'].encode()) != page['sha256']:
                 raise ValueError('Captured history and source article do not match')
@@ -164,7 +169,7 @@ def capture(scenario, destination):
                 'html_blob': recorder.store.blob(prepared), 'assets': assets,
                 'revisions': history}
             print(f'  {len(raw):,} original bytes; {assets} images captured', flush=True)
-        manifest['siteinfo'] = recorder.api(action='query', meta='siteinfo', siprop='general|namespaces|statistics')['query']
+        manifest['siteinfo'] = api(action='query', meta='siteinfo', siprop='general|namespaces|statistics')['query']
         durable(destination/'source.json', encoded(manifest))
         durable(destination/'scenario.json', encoded(scenario))
     except Exception as exc:

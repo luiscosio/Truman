@@ -7,9 +7,11 @@ import subprocess
 from lxml import html
 from sandbox.archive import durable,encoded,sha,seal,verify,read_blob
 from sandbox.demand import create,WorldService
-from sandbox.demand_model import project
+from sandbox.sites.wikipedia.handlers import project
 from sandbox.demand_prepare import prepare
 from sandbox.demand_integrity import integrity_issues
+from sandbox.sites import load
+WIKIPEDIA=load('wikipedia')
 from truman.world import title_key
 
 
@@ -24,7 +26,7 @@ def main():
    source=a.sources/str(i);meta=json.loads((source/'original.json').read_text());original=read_blob(source/'audit',meta['document_blob']);candidate=(a.candidates/f'{i}-candidate.html').read_bytes()
    review=json.loads((a.candidates/f'{i}-review.json').read_text())
    assert review['source_html_sha256']==sha(original) and review['candidate_html_sha256']==sha(candidate)
-   assert not integrity_issues(original,candidate)
+   assert not integrity_issues(WIKIPEDIA,original,candidate)
    attempt,store=w.attempt();shutil.copytree(source,attempt/'original-capture');durable(attempt/'original.json',encoded(meta))
    review.update(method='Manual editorial rewrite and review by Codex; no external writer or independent semantic reviewer',status='manual_reviewed',world_sha256=sha(encoded(w.scenario['world_model'])),limitations=['Four saved Wikipedia pages only; unseen pages are coverage misses.','Changed paragraphs lose some inline links/citations; incompatible citations are omitted, never fabricated.','Source metadata and external reference URLs remain capture provenance.','This manual fixture does not validate automated rewriting or cross-site generality.'])
    durable(attempt/'manual-review.json',encoded(review))

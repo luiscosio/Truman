@@ -16,20 +16,28 @@ from pathlib import Path
 from lxml import html
 
 from sandbox.archive import Store, durable, encoded, read_blob, seal, sha, verify
-from sandbox.demand_model import rewrite, project, fact_merge
-from sandbox.demand_source import WikipediaSource
+from sandbox.demand_model import rewrite, fact_merge
 from sandbox.generators import generation_settings
 from sandbox.demand_world import normalize
-from truman.world import title_key
+from sandbox import sites
 
 
 class CoverageMiss(ValueError):pass
 class NeedsGeneration(Exception):pass
 
 
+def code_files():
+    """World engine and site adapter sources, retained in every world and attempt audit."""
+    base=Path(__file__).parent
+    files=[p for p in base.glob('*.py') if p.name.startswith(('demand','rewrite_')) or p.name=='generators.py']
+    files+=[p for p in sorted((base/'sites').rglob('*')) if p.suffix in ('.py','.yaml')]
+    return {str(p.relative_to(base)).replace('/','__'):p.read_bytes() for p in files}
+
+
 def create(root,scenario,renderer):
     root=Path(root)
     scenario=normalize(scenario)
+    site=sites.for_scenario(scenario)
     generation_settings(scenario,'b')
     cutoff=scenario.get('source_cutoff',scenario['as_of']+'T23:59:59Z')
     dt.datetime.fromisoformat(cutoff.replace('Z','+00:00'))
@@ -39,10 +47,8 @@ def create(root,scenario,renderer):
     durable(root/'world.json',encoded({'schema_version':1,'scenario':scenario,'source_cutoff':cutoff,
         'scenario_sha256':sha(encoded(scenario)),
         'renderer_image':renderer,'created_at':dt.datetime.now(dt.timezone.utc).isoformat(),
-        'limitations':['Captured templates use capture-time expansion.',
-            ('Native source is preserved or independently rewritten and audited; templates use capture-time expansion.'
-             if scenario.get('wikipedia',{}).get('raw')=='native' else
-             'Raw wikitext is projected from the accepted DOM, not reconstructed original templates.'),
+        'site':{'id':site.id,'profile_sha256':site.sha256},
+        'limitations':[*site.world_limitations(site.settings(scenario)),
             'Search rankings are acquired at request time and then cached.',
             'Independent model review is not proof of global semantic consistency.']}))
     with contextlib.closing(sqlite3.connect(root/'world.sqlite')) as db:
@@ -56,11 +62,9 @@ CREATE TABLE receipts (id TEXT PRIMARY KEY, value TEXT);''')
         for entity in scenario.get('world_model',{}).get('entities',[]):
             if not entity['source_title']:continue
             for alias in [entity['source_title'],entity['title'],*entity['aliases']]:
-                db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(title_key(alias),title_key(entity['source_title'])))
+                db.execute('INSERT OR IGNORE INTO aliases VALUES (?,?)',(site.key(alias),site.key(entity['source_title'])))
         db.commit()
-    for name in ('demand.py','demand_model.py','demand_source.py','demand_routes.py','demand_bridge.py','rewrite_model.py','demand_world.py','demand_rewrite.py','demand_availability.py','demand_integrity.py','demand_budget.py','generators.py','wikipedia_coverage.py','wikipedia_native.py'):
-        path=Path(__file__).with_name(name)
-        if path.exists():durable(root/('code-'+name),path.read_bytes())
+    for name,data in code_files().items():durable(root/('code-'+name),data)
     return root
 
 
@@ -91,12 +95,14 @@ def fork_world(source,destination,scenario=None,renderer=None):
 
 
 class WorldService:
-    def __init__(self,root,source_factory=WikipediaSource,writer=rewrite):
+    def __init__(self,root,source_factory=None,writer=rewrite):
         self.root=Path(root);self.config=json.loads((self.root/'world.json').read_bytes())
         if self.config.get('scenario_sha256',sha(encoded(self.config['scenario'])))!=sha(encoded(self.config['scenario'])):
             raise ValueError('World specification changed: create a new world version')
-        self.scenario=self.config['scenario'];self.source_factory=source_factory;self.writer=writer
-        self.code={p.name:p.read_bytes() for p in Path(__file__).parent.glob('*.py') if p.name.startswith(('demand','rewrite_')) or p.name in ('generators.py','wikipedia_coverage.py','wikipedia_native.py')}
+        self.scenario=self.config['scenario'];self.writer=writer
+        self.site=sites.for_scenario(self.scenario);self.settings=self.site.settings(self.scenario)
+        self.source_factory=source_factory or self.site.source()
+        self.code=code_files()
         self.readonly=(self.root/'seal.json').exists()
         if self.readonly:verify(self.root)
         self.lock=threading.RLock()
@@ -134,7 +140,7 @@ class WorldService:
         return json.loads(row[0]) if row else None
 
     def resolve(self,title):
-        title=title_key(title)
+        title=self.site.key(title)
         row=self.db.execute('SELECT target FROM aliases WHERE alias=?',(title,)).fetchone()
         return row[0] if row else title
 
@@ -148,7 +154,7 @@ class WorldService:
             mime,data=match[1],match[2]
             raw=base64.b64decode(data,validate=True);key=self.blob(raw)
             self.db.execute('INSERT OR IGNORE INTO cache VALUES (?,?)',('asset:'+key,json.dumps({'blob':key,'mime':mime})))
-            return '/w/resources/'+key
+            return self.site.asset_path(key)
         return re.sub(r'data:([^;"\s]+);base64,([A-Za-z0-9+/=]+)',replace,document.decode()).encode()
 
     def ensure(self,title,revision=None):
@@ -186,7 +192,7 @@ class WorldService:
                 if original.get('missing'):
                     value={'missing':True,'title':key,'reason':'original-missing','attempt':attempt.name}
                 else:
-                    canonical=title_key(original['title'])
+                    canonical=self.site.key(original['title'])
                     # Redirect aliases converge before model generation.
                     existing=self.read('pages',canonical) if not revision else None
                     if existing is None:
@@ -207,7 +213,7 @@ class WorldService:
                             else:document,newfacts,edits=self.writer(original['document'],rewrite_scenario if retry else base_scenario,self.facts(),canonical,store,original['record']['timestamp'])
                             if document is not None and self.scenario.get('rewrite_pipeline')=='world-v2' and self.scenario.get('condition')!='reference':
                                 from sandbox.demand_integrity import integrity_issues
-                                problems=integrity_issues(original['document'],document)
+                                problems=integrity_issues(self.site,original['document'],document)
                                 if problems:raise Rejected('Content integrity rejected: '+json.dumps(problems))
                                 from sandbox.demand_rewrite import review_peers
                                 peers=[json.loads(row[0]) for row in self.db.execute('SELECT value FROM pages ORDER BY key')]
@@ -230,27 +236,28 @@ class WorldService:
                                         (canonical,original['record']['revid'],json.dumps(value)))
                     else:
                         record=dict(original['record'])
-                        native=self.scenario.get('wikipedia',{}).get('raw')=='native'
+                        # Native modes rewrite captured source; others derive text from the accepted DOM.
+                        native=self.settings['raw']=='native'
+                        represent,text_format=self.site.raw(self.settings['raw'])
                         if native:
-                            from sandbox.wikipedia_native import rewrite_source
-                            text,record,native_edits=rewrite_source(original['source'],original['document'],document,record,base_scenario,canonical,store)
+                            text,record,native_edits=represent(original['source'],original['document'],document,record,base_scenario,canonical,store)
                             store.event('native_representation',source_blob=store.blob(text.encode()),edits_blob=store.blob(encoded(native_edits)),record=record)
                         document=self.assets(document)
                         if not native:
-                            tree=html.fromstring(document,parser=html.HTMLParser(encoding='utf-8'));text=project(tree)
+                            text=represent(html.fromstring(document,parser=html.HTMLParser(encoding='utf-8')))
                         if len(document)>7_500_000 or len(text.encode())>7_500_000:raise CoverageMiss('Article exceeds response budget')
                         display=self.scenario.get('display_titles',{}).get(canonical,canonical)
-                        if self.scenario.get('rewrite_pipeline')=='world-v2' and self.scenario.get('wikipedia',{}).get('revision_metadata')!='preserve':
+                        if self.scenario.get('rewrite_pipeline')=='world-v2' and self.settings['revision_metadata']!='preserve':
                             # Original editor commentary remains in the private source audit.
                             record.update(comment='',user='')
                         page={'title':canonical,'display_title':display,'page_id':original['page_id'],
                             'revision_id':record['revid'],'revision_at':record['timestamp'],'sha256':sha(text.encode()),
-                            'source_url':'https://en.wikipedia.org/w/index.php?oldid='+str(record['revid'])}
+                            'source_url':self.site.version_url(record['revid'])}
                         value={'title':canonical,'page':page,'record':record,'html_blob':self.blob(document),
                             'text_blob':self.blob(text.encode()),'attempt':attempt.name,'edits_blob':store.blob(encoded(edits)),
                             'facts_sha256':sha(encoded(newfacts)),
                             'world_sha256':sha(encoded(self.scenario.get('world_model',{}))),
-                            'effective_date':base_scenario['_document_date'],'text_format':'native_wikitext' if native else 'dom_projection',
+                            'effective_date':base_scenario['_document_date'],'text_format':text_format,
                             'dependencies':sorted(newfacts)}
                         self.db.execute('INSERT INTO versions VALUES (?,?,?)',(canonical,record['revid'],json.dumps(value)))
                         for k,v in newfacts.items():self.db.execute('INSERT OR IGNORE INTO facts VALUES (?,?)',(k,v))
@@ -314,15 +321,13 @@ class WorldService:
 
     def history_range(self,title,params):
         """Upstream metadata for a revision range outside the widest window; never page content."""
-        key=self.resolve(title);cutoff=self.config['source_cutoff']
-        def fetch(source):
-            data=source.api(action='query',titles=key,redirects=1,prop='revisions',rvprop='ids|timestamp|user|comment',**params)
-            return [r for r in data['query']['pages'][0].get('revisions',[]) if r['timestamp']<=cutoff]
+        key=self.resolve(title)
+        fetch=lambda source:source.history_range(key,params)
         return self.present(key,self.cached_operation('history-range:'+key+':'+json.dumps(params,sort_keys=True),fetch))
 
     def present(self,key,records):
         """Revision metadata as this world shows it."""
-        if self.scenario.get('wikipedia',{}).get('revision_metadata')=='preserve':
+        if self.settings['revision_metadata']=='preserve':
             result=[]
             for r in records:
                 row=self.db.execute('SELECT value FROM versions WHERE key=? AND revision=?',(key,r['revid'])).fetchone()
@@ -347,11 +352,9 @@ class WorldService:
         row=self.db.execute('SELECT value FROM versions WHERE revision=?',(revision,)).fetchone()
         if row:return json.loads(row[0])
         def lookup(source):
-            data=source.api(action='query',revids=revision,prop='revisions',rvprop='ids|timestamp')
-            page=data['query']['pages'][0]
-            if not page.get('revisions') or page['revisions'][0]['timestamp']>self.config['source_cutoff']:
-                raise CoverageMiss('Revision outside fixed cutoff')
-            return page['title']
+            title=source.version_title(revision)
+            if title is None:raise CoverageMiss('Revision outside fixed cutoff')
+            return title
         title=self.cached_operation('revision-title:'+str(revision),lookup)
         return self.ensure(title,revision)
 
@@ -366,8 +369,8 @@ class WorldService:
         seal(destination);return destination
 
     def search(self,query,limit):
-        if self.scenario.get('wikipedia',{}).get('search')=='captured_corpus':
-            from sandbox.wikipedia_coverage import search_corpus
+        if self.settings['search']=='captured_corpus':
+            from sandbox.demand_search import search_corpus
             return search_corpus(self,query,limit)
         hits=self.cached_operation('search:'+query+':'+str(limit),lambda source:source.search(query,limit))
         return [self.ensure(hit['title']) for hit in hits]
@@ -404,6 +407,7 @@ class WorldService:
         from sandbox.demand_routes import respond
         reader=object.__new__(_CommittedView)
         reader.root=self.root;reader.config=self.config;reader.scenario=self.scenario
+        reader.site=self.site;reader.settings=self.settings
         reader.readonly=self.readonly
         reader.db=sqlite3.connect((self.root/'world.sqlite').resolve().as_uri()+'?mode=ro',uri=True,timeout=.1)
         try:

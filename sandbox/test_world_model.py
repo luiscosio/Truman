@@ -9,7 +9,8 @@ from sandbox.archive import Store, verify, journal
 from sandbox.demand import create, WorldService
 from sandbox.demand_model import Rejected
 from sandbox.demand_rewrite import rewrite, surfaces, identity_issues
-from sandbox.demand_world import validate, normalize, active_facts, settings
+from sandbox.demand_world import validate, normalize, active_facts, settings, title_index
+from sandbox.sites import load
 from sandbox.test_demand import Source
 
 SPEC={'version':1,'entities':[{'id':'institute','kind':'organization','source_title':'Old Institute',
@@ -40,15 +41,16 @@ class WorldModelTests(unittest.TestCase):
 
     def test_alias_collisions_reject(self):
         spec=copy.deepcopy(SPEC);spec['entities'].append({**spec['entities'][0],'id':'other'})
-        with self.assertRaisesRegex(ValueError,'alias'):validate(spec)
+        validate(spec)
+        with self.assertRaisesRegex(ValueError,'alias'):title_index(spec,load('wikipedia'))
 
     def test_rewriter_cannot_invent_link_targets(self):
         from sandbox.demand_rewrite import apply
-        nodes=surfaces(html.fromstring('<p><a href="/wiki/Original">Label</a></p>'))
+        nodes=surfaces(html.fromstring('<p><a href="/wiki/Original">Label</a></p>'),load('wikipedia'))
         node=next(n for n in nodes if n['field']=='href')
         with self.assertRaisesRegex(Rejected,'no captured or declared'):
-            apply(nodes,[{'id':node['id'],'text':'/wiki/Invented_page'}],{node['id']},{'Original','Known page'})
-        apply(nodes,[{'id':node['id'],'text':'/wiki/Known_page'}],{node['id']},{'Original','Known page'})
+            apply(nodes,[{'id':node['id'],'text':'/wiki/Invented_page'}],{node['id']},load('wikipedia'),{'Original','Known page'})
+        apply(nodes,[{'id':node['id'],'text':'/wiki/Known_page'}],{node['id']},load('wikipedia'),{'Original','Known page'})
         self.assertEqual(node['node'].get('href'),'/wiki/Known_page')
 
     def test_proposed_image_replacement_is_removed_and_reviewed(self):
@@ -87,7 +89,7 @@ class WorldModelTests(unittest.TestCase):
     def test_whole_row_removal_hides_descendants_from_subsequent_review(self):
         from sandbox.demand_rewrite import remove_blocks,visible,readable_document
         tree=html.fromstring('<div><table><tr><td><a href="/wiki/Impossible">Impossible event</a></td></tr><tr><td>Preserved event</td></tr></table><p>Unrelated date: 1980.</p></div>')
-        nodes=surfaces(tree);block=next(n['block'] for n in nodes if n['original']=='Impossible event')
+        nodes=surfaces(tree,load('wikipedia'));block=next(n['block'] for n in nodes if n['original']=='Impossible event')
         with self.assertRaises(Rejected):remove_blocks(nodes,[block],set())
         log=remove_blocks(nodes,[block],{block})
         self.assertEqual(len(tree.xpath('.//tr')),1)
@@ -163,13 +165,13 @@ class WorldModelTests(unittest.TestCase):
         from sandbox.demand_rewrite import apply,visible
         spec=copy.deepcopy(SPEC);spec['entities'].append({'id':'plan','kind':'event','source_title':'','title':'A plan','aliases':[],'exists':True})
         tree=html.fromstring('<p><a href="/wiki/Old_Institute" title="Old Institute">Historical plan</a></p>')
-        nodes=surfaces(tree)
+        nodes=surfaces(tree,load('wikipedia'))
         edits=[{'id':n['id'],'text':''} for n in nodes if n['field'] in ('href','title')]
-        apply(nodes,edits,{n['id'] for n in nodes})
+        apply(nodes,edits,{n['id'] for n in nodes},load('wikipedia'))
         self.assertEqual(tree.xpath('count(.//a)'),0)
         self.assertEqual(tree.xpath('string(.//span)'),'Historical plan')
         self.assertFalse(any(n['field'] in ('href','title') for n in visible(nodes)))
-        self.assertEqual(identity_issues(nodes,spec),[])
+        self.assertEqual(identity_issues(nodes,spec,load('wikipedia')),[])
 
     def test_benchmark_records_generation_errors_and_provider_blocks(self):
         from sandbox.demand_benchmark import run_case,cases
@@ -230,7 +232,7 @@ class WorldModelTests(unittest.TestCase):
     def test_large_document_encoding_retains_all_fields(self):
         from sandbox.demand_rewrite import document_packet
         document=('<div class="mw-parser-output">'+''.join('<p title="metadata">Text '+str(i)+'</p>' for i in range(6000))+'</div>').encode()
-        nodes=surfaces(html.fromstring(document));packet=document_packet(nodes)
+        nodes=surfaces(html.fromstring(document),load('wikipedia'));packet=document_packet(nodes)
         self.assertIsInstance(packet,dict)
         self.assertEqual([dict(zip(packet['fields'],row)) for row in packet['nodes']],__import__('sandbox.demand_rewrite',fromlist=['visible']).visible(nodes))
 
@@ -288,14 +290,14 @@ class WorldModelTests(unittest.TestCase):
 
     def test_peer_packet_preserves_all_fields_without_patch_ids(self):
         from sandbox.demand_rewrite import peer_document,visible,shared_peer_fields,readable_document
-        packet=peer_document(DOC)
-        expected=[[n['field'],n['value']] for n in visible(surfaces(html.fromstring(DOC))) ]
+        packet=peer_document(DOC,load('wikipedia'))
+        expected=[[n['field'],n['value']] for n in visible(surfaces(html.fromstring(DOC),load('wikipedia'))) ]
         self.assertEqual([entry for block in packet['blocks'] for entry in block],expected)
         long={'blocks':[[['href','https://en.wikipedia.org/wiki/A_very_long_repeated_article_identity_for_testing']]],'format':'test'}
         first,second,shared=shared_peer_fields(long,long)
         for compact in (first,second):
             self.assertEqual([[shared[e] if isinstance(e,int) else e for e in b] for b in compact['blocks']],long['blocks'])
-        readable=readable_document(surfaces(html.fromstring(DOC)))
+        readable=readable_document(surfaces(html.fromstring(DOC),load('wikipedia')))
         self.assertTrue(any('The Old Institute studies water.' in block['text'] for block in readable))
 
     def test_large_peer_comparisons_cover_every_cross_page_block_pair(self):

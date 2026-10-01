@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 from sandbox.archive import Store
 from sandbox.demand_model import Rejected
-from sandbox.wikipedia_native import apply_patches,rewrite_source,lead,compact_patches,undefined_references,source_blocks,block_spans,splice
+from sandbox.sites.wikipedia.native import apply_patches,rewrite_source,lead,compact_patches,undefined_references,source_blocks,block_spans,splice
 
 
 class NativeTests(unittest.TestCase):
@@ -20,7 +20,7 @@ class NativeTests(unittest.TestCase):
  def test_source_like_html_examples_are_not_rejected_as_documents(self):
   self.assertIn('<html>',apply_patches('== HTML ==\n<syntaxhighlight><html></syntaxhighlight>',[]))
  def test_unchanged_source_preserves_editor_and_comment_without_model(self):
-  with tempfile.TemporaryDirectory() as tmp,patch('sandbox.wikipedia_native.ask',side_effect=AssertionError('No model needed')):
+  with tempfile.TemporaryDirectory() as tmp,patch('sandbox.sites.wikipedia.native.ask',side_effect=AssertionError('No model needed')):
    record={'revid':5,'timestamp':'2026-01-01T00:00:00Z','user':'Editor','comment':'Fixed a typo'}
    text,r,edits=rewrite_source('{{x}}',b'x',b'x',record,{},'Topic',Store(Path(tmp)))
    self.assertEqual((text,r,edits),('{{x}}',record,[]))
@@ -29,7 +29,7 @@ class NativeTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as tmp:
    scenario={'as_of':'2026-01-01','facts':['Rename the institute.'],'world_model':{}}
    responses=[{'edits':[{'id':0,'text':'{{name|New Institute}}','reason':'renamed'}],'comment':'Fixed a typo'},{'accepted':True,'issues':[]}]
-   with patch('sandbox.wikipedia_native.ask',side_effect=responses):
+   with patch('sandbox.sites.wikipedia.native.ask',side_effect=responses):
     text,record,edits=rewrite_source('{{name|Old Institute}}\n\nUnchanged.',original,accepted,{'timestamp':'2026-01-01','user':'Editor','comment':'Fixed a typo'},scenario,'Institute',Store(Path(tmp)))
    self.assertEqual(text,'{{name|New Institute}}\n\nUnchanged.');self.assertEqual(record['user'],'Editor')
 
@@ -39,7 +39,7 @@ class NativeTests(unittest.TestCase):
              {'accepted':False,'issues':['Update role too.']},
              {'edits':[{'id':1,'text':'New role.','reason':'role'}],'comment':'Copyedit'},
              {'accepted':True,'issues':[]}]
-  with tempfile.TemporaryDirectory() as tmp,patch('sandbox.wikipedia_native.ask',side_effect=responses) as ask:
+  with tempfile.TemporaryDirectory() as tmp,patch('sandbox.sites.wikipedia.native.ask',side_effect=responses) as ask:
    result=rewrite_source('Old name.\n\nOld role.',original,accepted,{'timestamp':'2026-01-01'},
                          {'as_of':'2026-01-01','facts':['Rename and change role.']},'Topic',Store(Path(tmp)))
    self.assertEqual(result[0],'New name.\n\nNew role.')
@@ -49,7 +49,7 @@ class NativeTests(unittest.TestCase):
   original=b'<div class="mw-parser-output"><p>Old</p></div>';accepted=original.replace(b'Old',b'New')
   source='Old.\n\n{{clear}}\n\nSee Old. for more.\n\n{{clear}}\n'
   responses=[{'edits':[{'id':0,'text':'New.','reason':'rename'},{'id':3,'text':'','reason':'drop'}],'comment':''},{'accepted':True,'issues':[]}]
-  with tempfile.TemporaryDirectory() as tmp,patch('sandbox.wikipedia_native.ask',side_effect=responses):
+  with tempfile.TemporaryDirectory() as tmp,patch('sandbox.sites.wikipedia.native.ask',side_effect=responses):
    text,_,edits=rewrite_source(source,original,accepted,{'timestamp':'2026-01-01'},{'as_of':'2026-01-01','facts':['Rename.']},'Topic',Store(Path(tmp)))
   self.assertEqual(text,'New.\n\n{{clear}}\n\nSee Old. for more.\n')
   self.assertEqual([(e['block'],e['before']) for e in edits],[(0,'Old.'),(3,'\n\n{{clear}}')])
@@ -79,7 +79,7 @@ class NativeTests(unittest.TestCase):
   responses=[{'edits':[{'id':1,'text':'','reason':'excluded'}],'comment':''},
              {'edits':[{'id':0,'text':'Keep.<ref name="a">Source</ref>','reason':'preserve definition'}],'comment':''},
              {'accepted':True,'issues':[]}]
-  with tempfile.TemporaryDirectory() as tmp,patch('sandbox.wikipedia_native.ask',side_effect=responses) as ask:
+  with tempfile.TemporaryDirectory() as tmp,patch('sandbox.sites.wikipedia.native.ask',side_effect=responses) as ask:
    text,_,_=rewrite_source(source,original,accepted,{'timestamp':'2026-01-01'},
                           {'as_of':'2026-01-01','facts':['Remove the excluded event.']},'Topic',Store(Path(tmp)))
    self.assertFalse(undefined_references(text));self.assertNotIn('Excluded',text)
@@ -87,8 +87,10 @@ class NativeTests(unittest.TestCase):
 
  def test_export_marks_hidden_contributor_and_omits_empty_comment(self):
   from lxml import etree
-  from sandbox.wikipedia_coverage import export_xml
+  from sandbox.sites.wikipedia.handlers import export_xml
+  from sandbox.sites import load
   class World:
+   site=load('wikipedia')
    def bytes(self,digest):return b'text'
   article={'page':{'display_title':'Topic','page_id':1},'record':{'revid':2,'timestamp':'2026-01-01T00:00:00Z','user':'','comment':''},'text_blob':'x'}
   revision=etree.fromstring(export_xml(World(),[article])).xpath('//*[local-name()="revision"]')[0]

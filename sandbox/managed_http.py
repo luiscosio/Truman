@@ -14,8 +14,10 @@ from pathlib import Path
 
 from mitmproxy import http, io
 from sandbox.archive import Store, FrozenWorld, durable, encoded, sha
-from sandbox.site_policy import validate
+from sandbox.site_policy import ORIGIN, WORLD_TRANSPORTS, validate
 
+# Origin banners the gateway removes: the legacy frozen server and the on-demand bridge.
+ORIGIN_SERVERS = {"MediaWiki", "truman-world"}
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"}
 PRIVATE = {"authorization", "proxy-authorization", "cookie"}
 
@@ -23,7 +25,7 @@ PRIVATE = {"authorization", "proxy-authorization", "cookie"}
 def normalized_headers(original, length):
     hop = HOP | {value.strip().lower() for key, value in original if key.lower() == "connection" for value in value.split(",")}
     headers = [(k, v) for k, v in original if k.lower() not in hop | {"date", "content-length", "x-world-coverage", "x-world-evidence"}
-               and not (k.lower() == "server" and v.strip() == "MediaWiki")]
+               and not (k.lower() == "server" and v.strip() in ORIGIN_SERVERS)]
     headers += [("Date", formatdate(usegmt=True)), ("Content-Length", str(length))]
     return headers
 
@@ -42,7 +44,7 @@ class FrozenHTTP:
         self.writer = io.FlowWriter(self.stream)
 
     def origin(self, path, host):
-        upstream = http_client.HTTPConnection("wikipedia", 80, timeout=int(os.environ.get('WORLD_ORIGIN_TIMEOUT','20')))
+        upstream = http_client.HTTPConnection(ORIGIN, 80, timeout=int(os.environ.get('WORLD_ORIGIN_TIMEOUT','20')))
         try:
             upstream.request("GET", path, headers={"Host": host, "Connection": "close"})
             response = upstream.getresponse()
@@ -63,7 +65,7 @@ class FrozenHTTP:
             origin="agent", request_headers=headers, request_body_blob=self.capture.blob(request.raw_content or b""))
         flow.metadata.update(host=host, started=time.monotonic())
         try:
-            if not site or site.get("transport") != "frozen-wikipedia":
+            if not site or site.get("transport") not in WORLD_TRANSPORTS:
                 status, original, body = 403, [("Content-Type", "text/plain")], b"Access denied by network policy"
             elif request.method not in ("GET", "HEAD"):
                 status, original, body = 405, [("Content-Type", "text/plain"), ("Allow", "GET, HEAD")], b"Method not allowed"

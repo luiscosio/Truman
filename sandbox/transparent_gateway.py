@@ -226,19 +226,19 @@ class Connection(socketserver.BaseRequestHandler):
             if port not in (80, 443):
                 raise ValueError("Not an intercepted web connection")
             if port == 80:
-                if destination not in edge.wiki_ips:
+                if destination not in edge.world_ips:
                     raise ValueError("HTTP destination not allowed")
-                edge.audit.event("connection", connection_id=identifier, destination=destination, port=port, decision="wikipedia")
+                edge.audit.event("connection", connection_id=identifier, destination=destination, port=port, decision="world")
                 if getattr(edge, "managed", False):
                     self.relay(("127.0.0.1", 9000))
                 else:
                     HTTP(client, self.client_address, edge)
                 return
             name = peek_sni(client)
-            if name in getattr(edge, "wiki_names", WIKI):
-                if destination not in edge.wiki_ips:
-                    raise ValueError("Wikipedia destination differs from pinned DNS")
-                edge.audit.event("connection", connection_id=identifier, destination=destination, port=port, sni=name, decision="wikipedia")
+            if name in getattr(edge, "world_names", WIKI):
+                if destination not in edge.world_ips:
+                    raise ValueError("World destination differs from pinned DNS")
+                edge.audit.event("connection", connection_id=identifier, destination=destination, port=port, sni=name, decision="world")
                 if getattr(edge, "managed", False):
                     self.relay(("127.0.0.1", 9000))
                 else:
@@ -285,7 +285,7 @@ def main():
     for port in (8080, 8443):
         edge = Edge(("0.0.0.0", port), Connection)
         edge.world, edge.capture, edge.audit, edge.tls = world, capture, audit, tls
-        edge.wiki_ips = {ip for addresses in answers.values() for ip in addresses}
+        edge.world_ips = {ip for addresses in answers.values() for ip in addresses}
         threading.Thread(target=edge.serve_forever, daemon=True).start()
     resolver = Resolver(answers, audit)
     for tcp in (False, True):

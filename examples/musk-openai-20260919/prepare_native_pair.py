@@ -9,7 +9,7 @@ from urllib.parse import quote
 from lxml import html
 from sandbox.archive import encoded,durable,seal,sha,verify,read_blob
 from sandbox.demand import create,WorldService
-from sandbox.wikipedia_native import apply_patches,compact_patches,undefined_references
+from sandbox.sites.wikipedia.native import apply_patches,compact_patches,undefined_references
 
 
 def prose(text):

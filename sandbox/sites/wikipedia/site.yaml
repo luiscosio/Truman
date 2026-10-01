@@ -1,0 +1,166 @@
+# English Wikipedia (MediaWiki). Reference: SITES.md.
+schema_version: 1
+id: wikipedia
+name: Wikipedia
+handlers: sandbox.sites.wikipedia.handlers
+source: WikipediaSource
+hosts: [en.wikipedia.org, en.m.wikipedia.org, wikipedia.org, www.wikipedia.org]
+
+resource:
+  path: /wiki/{key}
+  home: Main Page
+  assets: /w/resources/{key}
+  key: {replace: {"_": " "}, strip: true, capitalize_first: true}
+  encode: {replace: {" ": "_"}, safe: "()_-,'"}
+
+content:
+  body: '//*[contains(concat(" ", normalize-space(@class), " "), " mw-parser-output ")][descendant::p]'
+  # Relative to body. Pages without it use the first paragraphs instead.
+  lead: './section[@data-mw-section-id="0"]'
+  # Editor banners on old revisions: removed at capture and before rewriting.
+  drop: '//*[starts-with(@id,"mw-revision-info") or @id="mw-revision-nav"]'
+  # Removed from plain-text extracts (tables, footnote markers, reference lists).
+  extract_drop: './/style|.//script|.//table|.//sup|.//div[contains(@class,"reflist")]'
+  heading: '//*[@id="firstHeading"]'
+  title_suffix: ' - Wikipedia'
+
+links:
+  # Paths that name a resource key directly.
+  resource_prefixes: [/wiki/, ./]
+  # Paths a rewritten link may point to.
+  rewrite_prefixes: [/wiki/, ./, /w/index.php]
+
+versions:
+  url: '{origin}/w/index.php?oldid={id}'
+
+# Engine features this site supports; scenarios choose with site_options.
+# raw: how action=raw text is made. native rewrites the captured source with
+# its hook; other modes derive text from the accepted DOM with theirs. format
+# labels the stored text representation.
+options:
+  raw:
+    default: projection
+    modes:
+      projection: {hook: project, format: dom_projection}
+      native: {hook: native_source, format: native_wikitext}
+  revision_metadata:
+    default: blank
+    modes: {blank: {}, preserve: {}}
+  search:
+    default: upstream
+    modes: {upstream: {}, captured_corpus: {}}
+
+limitations:
+  always: [Captured templates use capture-time expansion.]
+  raw_native: [Native source is preserved or independently rewritten and audited; templates use capture-time expansion.]
+  raw_projection: [Raw wikitext is projected from the accepted DOM, not reconstructed original templates.]
+
+rewrite:
+  # Elements that group inline text, links and labels into one reviewable block.
+  blocks: [p, tr, li, figure, figcaption, h1, h2, h3, h4, title, meta]
+  attributes: [href, title, alt, aria-label, content]
+  skip: [script, style, svg, path, noscript]
+
+# Preparation checks these routes for every page and follows links to keys not
+# matching skip_keys. {title}: percent-encoded display title; {path}: page path.
+prepare:
+  paths:
+    - /wiki/{title}
+    - /api/rest_v1/page/summary/{title}
+    - /w/api.php?action=query&prop=extracts|revisions&explaintext=1&titles={title}
+    - /w/api.php?action=parse&prop=wikitext&page={title}
+    - /w/index.php?action=raw&title={title}
+  skip_keys: ':'
+
+capture:
+  hosts: [en.wikipedia.org, upload.wikimedia.org, thumb.wikimedia.org]
+  user_agent: TrumanWikipediaResearch/0.2
+
+params:
+  limit: {type: int, default: 10, min: 1, max: 50}
+  srlimit: {type: int, default: 5, min: 1, max: 50}
+  rvlimit: {type: int, default: 10, min: 1, max: 50}
+  rvstartid: {type: int}
+  rvendid: {type: int}
+  rvstart: {type: timestamp}
+  rvend: {type: timestamp}
+  rvdir: {type: enum, values: [older, newer], default: older}
+  fromrev: {type: version}
+  torev: {type: version}
+  revids: {type: version}
+
+messages:
+  int: {code: badinteger, info: 'Invalid value "{value}" for integer parameter "{name}".'}
+  timestamp: {code: badtimestamp, info: 'Invalid value "{value}" for timestamp parameter "{name}".'}
+  enum: {code: badvalue, info: 'Unrecognized value for parameter "{name}": {value}.'}
+  version: {code: nosuchrevid, info: 'There is no revision with ID {value}.'}
+  badcontinue: {code: badcontinue, info: 'Invalid continue param. You should pass the original value returned by the previous query.'}
+  invalidparammix:
+    code: invalidparammix
+    info: '"titles", "pageids" or a generator was used to supply multiple pages, but the "rvlimit", "rvstartid", "rvendid", "rvdir=newer", "rvuser", "rvexcludeuser", "rvstart", and "rvend" parameters may only be used on a single page.'
+
+constants:
+  docref: 'See https://en.wikipedia.org/w/api.php for API usage. Subscribe to the mediawiki-api-announce mailing list at &lt;https://lists.wikimedia.org/postorius/lists/mediawiki-api-announce.lists.wikimedia.org/&gt; for notice of API deprecations and breaking changes.'
+
+errors:
+  # MediaWiki answers bad parameters with HTTP 200 and an error envelope.
+  invalid_request:
+    status: 200
+    mime: application/json; charset=utf-8
+    headers: {MediaWiki-API-Error: '{code}'}
+    json: {error: {code: '{code}', info: '{info}', '*': '{docref}'}}
+  not_found:
+    status: 404
+    mime: text/html; charset=utf-8
+    body: <!doctype html><title>Not found</title><h1>Page not found</h1>
+  # One transient outage for every surface: coverage misses and failed
+  # generations never get a bespoke status. The reason stays in the evidence.
+  unavailable:
+    status: 503
+    mime: text/html; charset=utf-8
+    body: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <meta charset="utf-8">
+      <title>Wikimedia Error</title>
+      <style>*{margin:0;padding:0}body{background:#fff;font:15px/1.6 sans-serif;color:#333}.content{margin:7% auto 0;padding:2em 1em 1em;max-width:640px}h1{font-size:2em;font-weight:normal;margin-bottom:.5em}p{margin-top:1em}.footer{padding:0 1em;max-width:640px;margin:0 auto;color:#555;font-size:.9em}</style>
+      <div class="content" role="main">
+      <h1>Error</h1>
+      <p>Our servers are currently under maintenance or experiencing a technical issue. Please <a href="" title="Reload this page" onclick="window.location.reload(false); return false">try again</a> in a few minutes.</p>
+      </div>
+      <div class="footer"><p>If you report this error to the Wikimedia System Administrators, please include the details below.</p><p><code>Error: 503, Service Unavailable</code></p></div>
+      </html>
+
+# First match wins. {name} captures the rest of the path. Query tests: a value
+# or list (equals), true/false (present/absent) or {prefix: text}. defaults
+# apply before tests, as MediaWiki's own parameter defaults do.
+routes:
+  - {path: ['/wiki/Special:Export/{titles}', /wiki/Special:Export], handler: export_page}
+  - {path: /w/index.php, query: {title: [Special:Export]}, handler: export_page}
+  - {path: /w/index.php, query: {title: {prefix: Special:Export/}}, handler: export_page}
+  - {path: /w/index.php, query: {search: true}, handler: search_page, options: {lenient: true}}
+  - {path: /wiki/Special:Search, handler: search_page, options: {lenient: true}}
+  - {path: /w/index.php, query: {title: [Special:Search]}, handler: search_page, options: {lenient: true}}
+  - {path: '/w/resources/{key}', handler: asset}
+  - {path: /, handler: home}
+  - {path: '/api/rest_v1/page/summary/{key}', handler: rest_summary}
+  - {path: /w/api.php, defaults: {action: query}, query: {action: query, meta: siteinfo}, handler: api_siteinfo}
+  - {path: /w/api.php, defaults: {action: query}, query: {action: query, list: search}, handler: api_search}
+  - {path: /w/api.php, query: {action: compare}, handler: api_compare}
+  - {path: /w/api.php, query: {list: true}, handler: unsupported, options: {reason: Unsupported API list}}
+  - {path: /w/api.php, query: {meta: true}, handler: unsupported, options: {reason: Unsupported API list}}
+  - {path: /w/api.php, defaults: {action: query}, query: {action: [query, parse]}, handler: api_pages}
+  - {path: /w/api.php, handler: unsupported, options: {reason: Unsupported API action}}
+  - {path: '/wiki/Special:{name}', handler: unsupported, options: {reason: Unsupported special page}}
+  - {path: /w/index.php, query: {title: {prefix: 'Special:'}}, handler: unsupported, options: {reason: Unsupported special page}}
+  # Page views. key: where the resource key comes from, in order (path.<var>,
+  # query.<param>), else the home page. version: a query parameter naming a
+  # revision; MediaWiki shows the current page for a blank or malformed one.
+  - path: ['/wiki/{key}', /w/index.php]
+    defaults: {action: view}
+    query: {action: raw}
+    handler: page_raw
+    options: &page {lenient: true, key: [path.key, query.title], version: oldid}
+  - {path: ['/wiki/{key}', /w/index.php], defaults: {action: view}, query: {action: history}, handler: history_page, options: *page}
+  - {path: ['/wiki/{key}', /w/index.php], defaults: {action: view}, query: {action: view}, handler: page_html, options: *page}
+  - {path: ['/wiki/{key}', /w/index.php], handler: page_other, options: {<<: *page, reason: Unsupported action}}

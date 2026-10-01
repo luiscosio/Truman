@@ -1,9 +1,10 @@
 """Bounded automatic link exploration and route checks before freezing a world."""
 import argparse
 import json
+import re
 from collections import deque
 from pathlib import Path
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import quote
 from lxml import html
 from sandbox.archive import durable, encoded, sha
 from sandbox.demand import WorldService
@@ -25,19 +26,15 @@ def prepare(world,seeds,max_pages=12,depth=1):
             if article.get('missing'):
                 results.append({'title':title,'status':'world_missing'});continue
             q=quote(article['page']['display_title'],safe='')
-            paths=['/wiki/'+q,'/api/rest_v1/page/summary/'+q,
-                   '/w/api.php?action=query&prop=extracts|revisions&explaintext=1&titles='+q,
-                   '/w/api.php?action=parse&prop=wikitext&page='+q,
-                   '/w/index.php?action=raw&title='+q]
+            paths=[path.replace('{title}',q).replace('{path}',world.site.path(article['title'])) for path in world.site.prepare['paths']]
             routes=[{'path':path,'status':world.handle(path)['status']} for path in paths]
             results.append({'title':title,'status':'ready' if all(r['status']==200 for r in routes) else 'route_failed','routes':routes})
             if level<depth:
                 links=[]
+                skip=world.site.prepare.get('skip_keys')
                 for href in html.fromstring(world.bytes(article['html_blob']),parser=html.HTMLParser(encoding='utf-8')).xpath('//a/@href'):
-                    url=urlsplit(href)
-                    if url.hostname in (None,'en.wikipedia.org') and url.path.startswith('/wiki/'):
-                        name=unquote(url.path[6:]).replace('_',' ')
-                        if ':' not in name and world.resolve(name) not in seen:links.append(name)
+                    name=world.site.key_from_href(href)
+                    if name and not (skip and re.search(skip,name)) and world.resolve(name) not in seen:links.append(name)
                 known={e['source_title'] for e in world.scenario.get('world_model',{}).get('entities',[])}
                 links=sorted(set(links),key=lambda n:(world.resolve(n) not in known,n))
                 queue.extend((n,level+1) for n in links)
@@ -47,7 +44,7 @@ def prepare(world,seeds,max_pages=12,depth=1):
     return {'status':'ready' if ready else 'incomplete','scope':{'seeds':seeds,'depth':depth,'max_pages':max_pages},
             'world_sha256':sha(encoded(world.scenario.get('world_model',{}))),
             'pages':results,'unvisited':remaining,
-            'limitations':'Coverage is only for the declared seeds, link depth and five checked route forms; it is not the whole internet.'}
+            'limitations':'Coverage is only for the declared seeds, link depth and the site profile\'s checked route forms; it is not the whole internet.'}
 
 
 def main():

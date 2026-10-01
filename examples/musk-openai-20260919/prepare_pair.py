@@ -13,8 +13,10 @@ from urllib.parse import quote
 from lxml import html
 from sandbox.archive import durable,encoded,sha,seal,verify,read_blob
 from sandbox.demand import create,WorldService
-from sandbox.demand_model import project
+from sandbox.sites.wikipedia.handlers import project
 from sandbox.demand_integrity import integrity_issues
+from sandbox.sites import load
+WIKIPEDIA=load('wikipedia')
 
 TITLES=['OpenAI','Elon Musk','Sam Altman','ChatGPT']
 
@@ -42,7 +44,7 @@ def main():
    original=read_blob(source/'audit',meta['document_blob']);candidate=(candidates/f'{i}-candidate.html').read_bytes()
    review=json.loads((candidates/f'{i}-review.json').read_text())
    assert review['source_html_sha256']==sha(original) and review['candidate_html_sha256']==sha(candidate)
-   assert not integrity_issues(original,candidate)
+   assert not integrity_issues(WIKIPEDIA,original,candidate)
    rows.append(dict(index=i,title=title,current=number==0,source=source,source_seal=source_seal,meta=meta,original=original,candidate=candidate,review=review))
  summary={'history_limit':a.limit,'titles':TITLES,'worlds':{},'limitations':['Wikipedia only; search covers accepted captured articles, not all Wikipedia.','Raw/API/export text is the existing DOM projection, not original template source.','History contains only the declared recent revision window; unsupported filters/continuation remain coverage misses.','Both conditions omit usernames/comments to match metadata treatment.','Counterfactual historical patches are manually reviewed recipe transfers; no independent semantic reviewer.']}
  for condition in ('reference','synthetic'):

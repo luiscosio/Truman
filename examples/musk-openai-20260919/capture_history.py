@@ -11,7 +11,7 @@ import re
 import subprocess
 import time
 from sandbox.archive import Store,read_blob,durable,encoded,seal,verify
-from sandbox.demand_source import WikipediaSource
+from sandbox.sites.wikipedia.source import WikipediaSource
 
 
 def main():

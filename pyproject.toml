@@ -10,7 +10,11 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
-rewrite = ["mwparserfromhell==0.7.2", "lxml==6.0.2"]
+rewrite = [
+    "mwparserfromhell==0.7.2",
+    "lxml==6.0.2",
+    "pyyaml==6.0.3",
+]
 
 [project.scripts]
 truman = "truman.cli:main"

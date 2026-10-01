@@ -7,6 +7,8 @@ from pathlib import Path
 from lxml import html
 from sandbox.archive import read_blob,sha,verify
 from sandbox.demand_integrity import integrity_issues,article_shape
+from sandbox.sites import load
+WIKIPEDIA=load('wikipedia')
 
 
 def main():
@@ -148,10 +150,10 @@ def main():
     elif attr in ('title','alt','content','aria-label'):
      node_.set(attr,node_.get(attr).replace('OpenAI CEO Sam Altman','OpenAI co-founder Sam Altman').replace('Altman (CEO of OpenAI)','Altman (co-founder of OpenAI)'))
   candidate=html.tostring(tree,encoding='utf-8',doctype='<!doctype html>')
-  issues=integrity_issues(original,candidate)
+  issues=integrity_issues(WIKIPEDIA,original,candidate)
   if issues:raise ValueError((i,issues))
   (a.output/f'{i}-candidate.html').write_bytes(candidate)
   (a.output/f'{i}-edits.json').write_text(json.dumps(log,ensure_ascii=False,indent=2))
-  (a.output/f'{i}-review.json').write_text(json.dumps({'title':meta['title'],'source_html_sha256':sha(original),'candidate_html_sha256':sha(candidate),'source_shape':article_shape(original),'candidate_shape':article_shape(candidate),'edit_count':len(log),'removed_incompatible_citations':dropped},indent=2))
+  (a.output/f'{i}-review.json').write_text(json.dumps({'title':meta['title'],'source_html_sha256':sha(original),'candidate_html_sha256':sha(candidate),'source_shape':article_shape(WIKIPEDIA,original),'candidate_shape':article_shape(WIKIPEDIA,candidate),'edit_count':len(log),'removed_incompatible_citations':dropped},indent=2))
   print(meta['title'],len(log),'edits',flush=True)
 if __name__=='__main__':main()

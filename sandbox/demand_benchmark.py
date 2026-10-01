@@ -15,6 +15,9 @@ from sandbox.demand import create, WorldService
 from sandbox.demand_rewrite import surfaces, visible
 from sandbox.demand_world import compile_world, ask, obj, arr, S
 from sandbox.rewrite_model import ProviderBlocked
+from sandbox.sites import load
+
+WIKIPEDIA=load('wikipedia')
 
 VARIANTS={
     'baseline-sonnet-medium':('legacy','claude-sonnet-5','medium'),
@@ -123,8 +126,8 @@ def run_case(destination,case,compiled,variant,repeat):
                     'Major issues contradict the world, invent material facts, or corrupt unrelated facts. '
                     'Minor issues are wording or presentation defects. Judge the candidate itself, not author/model identity.',
                     {'rules':compiled['facts'],'world':compiled['world_model'],
-                     'source':visible(surfaces(html.fromstring(doc(page['title'],page['body']),parser=html.HTMLParser(encoding='utf-8')))),
-                     'candidate':visible(surfaces(html.fromstring(output,parser=html.HTMLParser(encoding='utf-8'))))},JUDGE)
+                     'source':visible(surfaces(html.fromstring(doc(page['title'],page['body']),parser=html.HTMLParser(encoding='utf-8')),WIKIPEDIA)),
+                     'candidate':visible(surfaces(html.fromstring(output,parser=html.HTMLParser(encoding='utf-8')),WIKIPEDIA))},JUDGE)
                 item.update(status='accepted',checks=checks,review=review,
                             passed=not checks and review['consistent'] and review['preserves_unrelated'] and not review['issues'])
             except ProviderBlocked as exc:item.update(status='blocked',passed=False,error=str(exc))

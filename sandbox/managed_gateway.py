@@ -11,7 +11,7 @@ from pathlib import Path
 from dnslib import RR, A, QTYPE, RCODE
 from dnslib.server import BaseResolver, DNSServer, DNSLogger
 from sandbox.archive import Store, durable, encoded
-from sandbox.site_policy import validate
+from sandbox.site_policy import ORIGIN, WORLD_TRANSPORTS, validate
 from sandbox.transparent_gateway import Connection, Edge, public_addresses
 
 
@@ -45,9 +45,9 @@ def main():
     policy = json.loads(Path("/sites.json").read_bytes())
     sites = validate(policy)
     answers = json.loads(Path("/dns.json").read_bytes())["answers"]
-    wiki = {name for name, site in sites.items() if site.get("transport") == "frozen-wikipedia"}
+    world_hosts = {name for name, site in sites.items() if site.get("transport") in WORLD_TRANSPORTS}
     providers = {name for name, site in sites.items() if site.get("transport") == "tls-passthrough"}
-    command = ["mitmdump", "--mode", "reverse:http://wikipedia:80@9000", "--listen-host", "127.0.0.1",
+    command = ["mitmdump", "--mode", "reverse:http://" + ORIGIN + ":80@9000", "--listen-host", "127.0.0.1",
                "--set", "confdir=/tmp/proxy", "--set", "connection_strategy=lazy", "--set", "upstream_cert=false",
                "--set", "keep_host_header=true", "--set", "body_size_limit=8m", "--set", "flow_detail=0",
                "--certs", "*=/tls/server.pem", "-s", "/app/sandbox/managed_http.py"]
@@ -68,8 +68,8 @@ def main():
             raise RuntimeError("HTTP proxy did not become ready")
         for port in (8080, 8443):
             edge = Edge(("0.0.0.0", port), Connection)
-            edge.managed, edge.audit, edge.wiki_names, edge.providers = True, audit, wiki, providers
-            edge.wiki_ips = {ip for name in wiki for ip in answers[name]}
+            edge.managed, edge.audit, edge.world_names, edge.providers = True, audit, world_hosts, providers
+            edge.world_ips = {ip for name in world_hosts for ip in answers[name]}
             threading.Thread(target=edge.serve_forever, daemon=True).start()
         resolver = ManagedResolver(answers, policy, audit)
         for tcp in (False, True):

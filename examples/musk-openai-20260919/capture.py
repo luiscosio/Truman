@@ -3,7 +3,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from sandbox.archive import Store,durable,encoded,seal
-from sandbox.demand_source import WikipediaSource
+from sandbox.sites.wikipedia.source import WikipediaSource
 
 TITLES=['OpenAI','Elon Musk','Sam Altman','ChatGPT']
 def main():

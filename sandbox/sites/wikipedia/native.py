@@ -5,7 +5,7 @@ from lxml import html
 from sandbox.archive import encoded,sha
 from sandbox.demand_world import ask,obj,arr,S
 from sandbox.demand_model import Rejected
-from sandbox.rewrite_capture import CONTENT
+from sandbox.sites import load
 
 BLOCK_EDITS=obj({'edits':arr(obj({'id':{'type':'integer'},'text':S,'reason':S})), 'comment':S})
 REVIEW=obj({'accepted':{'type':'boolean'},'issues':arr(S)})
@@ -93,7 +93,7 @@ def compact_patches(source,edits):
 
 
 def visible(document):
-    root=html.fromstring(document,parser=html.HTMLParser(encoding='utf-8')).xpath(CONTENT)[0]
+    root=html.fromstring(document,parser=html.HTMLParser(encoding='utf-8')).xpath(load('wikipedia').content['body'])[0]
     for n in list(root.xpath('.//style|.//script')):n.drop_tree()
     return ' '.join(root.text_content().split())
 

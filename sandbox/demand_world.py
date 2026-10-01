@@ -13,7 +13,7 @@ from pathlib import Path
 from sandbox.archive import Store, durable, encoded, seal, sha
 from sandbox.generators import generation_settings
 from sandbox.rewrite_model import call_claude
-from truman.world import title_key
+from sandbox import sites
 
 
 def obj(fields):
@@ -56,7 +56,7 @@ def validate(spec):
         raise ValueError('Invalid world specification')
     if len(encoded(spec))>200000:raise ValueError('World specification exceeds budget')
     if not isinstance(spec['entities'],list) or not isinstance(spec['facts'],list):raise ValueError('Invalid entity/fact lists')
-    ids=set();names={}
+    ids=set()
     for e in spec['entities']:
         if set(e)!=set(ENTITY['properties']) or type(e['exists']) is not bool:raise ValueError('Invalid entity')
         if not re.fullmatch('[a-z][a-z0-9_]{0,79}',e['id']) or e['id'] in ids:raise ValueError('Invalid or duplicate entity ID')
@@ -67,9 +67,6 @@ def validate(spec):
         if not isinstance(e['aliases'],list):raise ValueError('Invalid aliases')
         for name in ([e['source_title'],e['title'],*e['aliases']] if e['source_title'] else []):
             if not isinstance(name,str) or not name.strip():raise ValueError('Empty alias')
-            key=title_key(name)
-            if key in names and names[key]!=e['id']:raise ValueError('Ambiguous entity alias: '+name)
-            names[key]=e['id']
     slots={}
     for f in spec['facts']:
         if set(f)!=set(FACT['properties']) or f['subject'] not in ids:raise ValueError('Invalid fact subject')
@@ -88,6 +85,17 @@ def validate(spec):
     return spec
 
 
+def title_index(spec,site):
+    """Entity ID for every page title and alias, under the site's title normalization."""
+    names={}
+    for e in spec['entities']:
+        for name in ([e['source_title'],e['title'],*e['aliases']] if e['source_title'] else []):
+            key=site.key(name)
+            if key in names and names[key]!=e['id']:raise ValueError('Ambiguous entity alias: '+name)
+            names[key]=e['id']
+    return names
+
+
 def active_facts(spec,date):
     validate(spec);dt.date.fromisoformat(date)
     return {f["subject"]+'.'+f['predicate']:f['value'] for f in spec['facts']
@@ -99,11 +107,11 @@ def normalize(scenario):
     if 'world_model' not in result:
         if result.get('rewrite_pipeline')=='world-v2':raise ValueError('Compile a world_model before using world-v2')
         return result
-    spec=validate(result['world_model'])
+    spec=validate(result['world_model']);site=sites.for_scenario(result);title_index(spec,site)
     result['rewrite_pipeline']='world-v2'
     result['world_facts']=active_facts(spec,result['as_of'])
-    result['display_titles']={title_key(e['source_title']):title_key(e['title']) for e in spec['entities'] if e['exists'] and e['source_title']}
-    result['absent_titles']=sorted({title_key(n) for e in spec['entities'] if not e['exists'] and e['source_title']
+    result['display_titles']={site.key(e['source_title']):site.key(e['title']) for e in spec['entities'] if e['exists'] and e['source_title']}
+    result['absent_titles']=sorted({site.key(n) for e in spec['entities'] if not e['exists'] and e['source_title']
                                    for n in [e['source_title'],e['title'],*e['aliases']]})
     for role in ('planner','writer','reviewer','peer_reviewer','preservation_reviewer'):settings(result,role)
     return result
@@ -111,11 +119,11 @@ def normalize(scenario):
 
 def compile_world(scenario,store):
     """Compile once; semantic acceptance is audited, not a proof of consistency."""
-    feedback=[]
+    feedback=[];site=sites.for_scenario(scenario)
     for attempt in range(3):
         spec=ask(store,scenario,'planner','compile-'+str(attempt),
             'Compile a reusable alternate-world specification from operator rules. Rules are authoritative. '
-            'Identify entities (people, organizations, places, events, technologies), stable IDs, source Wikipedia titles, '
+            'Identify entities (people, organizations, places, events, technologies), stable IDs, source '+site.name+' titles, '
             'Use lowercase snake_case entity IDs and predicate names, matching [a-z][a-z0-9_]{0,79}; no dots, spaces or punctuation. '
             'world titles and aliases. source_title must be empty for an entity without its own article (e.g. a sub-event or facility); '
             'never reuse another entity article as its source_title or invent an article for every entity. '
@@ -135,7 +143,7 @@ def compile_world(scenario,store):
             {'rules':scenario['facts'],'world_date':scenario['as_of'],
              'world_facts':scenario.get('world_facts',{}),'display_titles':scenario.get('display_titles',{}),
              'absent_titles':scenario.get('absent_titles',[]),'known_source_titles':scenario.get('source_titles',[]),'feedback':feedback},SPEC)
-        try:validate(spec)
+        try:validate(spec);title_index(spec,site)
         except ValueError as exc:
             feedback=[str(exc)];store.event('world_compilation_rejected',attempt=attempt,issues=feedback);continue
         review=ask(store,scenario,'reviewer','compile-review-'+str(attempt),

@@ -3,6 +3,11 @@ import copy
 import re
 
 CATEGORIES = ("altered", "unaltered", "blacklisted")
+# Hosts served by a simulated world. Sealed profiles recorded before multi-site
+# worlds call this transport "frozen-wikipedia"; both names mean the same.
+WORLD_TRANSPORTS = ("world", "frozen-wikipedia")
+# Compose service that serves every world-transport host (named before multi-site worlds).
+ORIGIN = "wikipedia"
 
 
 def validate(policy):
@@ -20,10 +25,10 @@ def validate(policy):
                     raise ValueError("Use exact lowercase DNS hostnames")
                 if host in hosts:
                     raise ValueError("Overlapping site classifications: " + host)
-                if category != "blacklisted" and entry.get("transport") not in ("frozen-wikipedia", "tls-passthrough"):
+                if category != "blacklisted" and entry.get("transport") not in (*WORLD_TRANSPORTS, "tls-passthrough"):
                     raise ValueError("Unsupported site transport")
-                if category == "altered" and entry.get("transport") != "frozen-wikipedia":
-                    raise ValueError("Altered sites require the frozen content backend")
+                if category == "altered" and entry.get("transport") not in WORLD_TRANSPORTS:
+                    raise ValueError("Altered sites require a world backend")
                 hosts[host] = {**entry, "category": category}
     return hosts
 
@@ -33,7 +38,7 @@ def effective(policy, condition):
     validate(result)
     if condition == "reference":
         for entry in result["altered"]:
-            entry["reason"] = "Authentic saved Wikipedia revision text, rendered by the experiment; not live Wikipedia."
+            entry["reason"] = "Authentic saved page text, rendered by the experiment; not the live site."
             result["unaltered"].append(entry)
         result["altered"] = []
     validate(result)

@@ -182,7 +182,7 @@ def execute(args):
     try:
         if getattr(args,'world_service',None):
             from sandbox.demand_bridge import Worker
-            demand_worker=Worker(args.world_service,queue_path)
+            demand_worker=Worker([args.world_service],queue_path)
         print("Starting isolated Wikipedia network", flush=True)
         checked(compose + ["up", "-d", "--wait", "wikipedia", "gateway"] + (["clientnet"] if transparent else []), env, stdout=subprocess.DEVNULL)
         if transparent:
@@ -348,7 +348,8 @@ def execute(args):
         failures = [e for e in network if e["status"] == 503]
         if failures or any(r["status"] == "error" for r in records):
             result["status"] = "simulation_failed"
-    result["opened_urls"] = ["https://en.wikipedia.org" + e["path"] for e in successful]
+    # Network events record their host; recordings from the Wikipedia-only proxy predate that.
+    result["opened_urls"] = ["https://" + e.get("host", "en.wikipedia.org") + e["path"] for e in successful]
     result["required_pages_opened"] = all(u in result["opened_urls"] for u in urls)
     if result["status"] == "completed" and not successful:
         result["status"] = "no_intercepted_page"
