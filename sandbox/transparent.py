@@ -126,6 +126,15 @@ if managed:
  extras['http2_connection_reused']=True
  extras['http2_bodies_match']=True
 conn.close()
+others={}
+for other in [h for h in (sys.argv[4].split(',') if len(sys.argv)>4 and sys.argv[4] else []) if h!=host]:
+ extra=http.client.HTTPSConnection(other,timeout=10)
+ extra.request('GET','/health' if managed else '/')
+ answer=extra.getresponse();answer.read()
+ others[other]={'status':answer.status,'peer':extra.sock.getpeername()[0] if extra.sock else None,'tls_verified':True}
+ extra.close()
+ assert answer.status==200,(other,answer.status)
+extras['other_world_hosts']=others
 up=http.client.HTTPSConnection('api.anthropic.com',timeout=20)
 up.request('GET','/')
 result=up.getresponse()
@@ -170,14 +179,14 @@ print(json.dumps({'environment_clues':clues,'world_dns':ips,'peer':peer,'tls_ver
 '''
 
 
-def probe_host(folder):
-    """A simulated host to probe: Wikipedia when the run serves it, else the first world host."""
+def world_hosts(folder):
+    """Hosts the run's policy serves from worlds; Wikipedia first when present."""
     policy = folder / "effective-sites.json"
     if not policy.exists():
-        return WIKI[0]
+        return [WIKI[0]]
     from sandbox.site_policy import WORLD_TRANSPORTS, validate
     served = [host for host, entry in validate(json.loads(policy.read_bytes())).items() if entry.get("transport") in WORLD_TRANSPORTS]
-    return WIKI[0] if WIKI[0] in served else served[0]
+    return sorted(served, key=lambda h: h != WIKI[0])
 
 
 def preflight(compose, env, folder, world):
@@ -185,8 +194,10 @@ def preflight(compose, env, folder, world):
     state = json.loads(subprocess.check_output(["docker", "inspect", container], text=True))[0]
     origin = next(iter(state["NetworkSettings"]["Networks"].values()))["IPAddress"]
     probe=PROBE.replace('/wiki/Monarchy_of_the_United_Kingdom','/health') if world.snapshot.get('presentation')=='on-demand-v1' else PROBE
-    host = probe_host(folder)
-    result = subprocess.run(compose + ["run", "--rm", "--no-deps", "-T", "agent", "python3", "-c", probe, origin, env.get("TRUMAN_GATEWAY_ENGINE", "transparent"), host],
+    hosts = world_hosts(folder)
+    host = hosts[0]
+    # Every served host must resolve to its pinned answers and present a trusted certificate.
+    result = subprocess.run(compose + ["run", "--rm", "--no-deps", "-T", "agent", "python3", "-c", probe, origin, env.get("TRUMAN_GATEWAY_ENGINE", "transparent"), host, ",".join(hosts[1:])],
                             cwd=ROOT, env=env, capture_output=True, timeout=75)
     durable(folder / "preflight.stdout", result.stdout)
     durable(folder / "preflight.stderr", result.stderr)
@@ -195,6 +206,9 @@ def preflight(compose, env, folder, world):
     observed = json.loads(result.stdout)
     pinned = json.loads((folder / "network-profile.json").read_bytes())["dns"]["answers"][host]
     assert observed["world_dns"] == pinned and observed["peer"] in pinned
+    answers = json.loads((folder / "network-profile.json").read_bytes())["dns"]["answers"]
+    for other, seen in observed.get("other_world_hosts", {}).items():
+        assert seen["peer"] in answers[other], (other, seen)
     route = world.lookup("GET", "en.wikipedia.org", "/wiki/Monarchy_of_the_United_Kingdom")
     if route:
         assert observed["body_sha256"] == route["body_blob"]
