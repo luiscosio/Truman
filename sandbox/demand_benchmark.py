@@ -10,7 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from lxml import html
-from sandbox.archive import Store, durable, encoded, journal, read_blob, seal
+from sandbox.archive import Store, durable, encoded, journal, seal
 from sandbox.demand import create, WorldService
 from sandbox.demand_rewrite import surfaces, visible
 from sandbox.demand_world import compile_world, ask, obj, arr, S

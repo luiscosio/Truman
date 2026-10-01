@@ -1,7 +1,6 @@
 import argparse
 import functools
 import html
-import json
 import re
 import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer

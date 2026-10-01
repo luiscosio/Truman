@@ -13,7 +13,7 @@ import mwparserfromhell as mw
 from sandbox.model_setup import REPOSITORY, REVISION, SHA256
 from sandbox.archive import Store
 from sandbox.generators import generation_settings
-from truman.world import World, digest, wiki_url
+from truman.world import World, digest
 
 MODEL = "qwen-agentworld"
 SETTINGS = {"temperature": 0.6, "top_p": 0.95, "top_k": 20, "seed": 42,

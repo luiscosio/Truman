@@ -2,7 +2,6 @@
 import functools
 import json
 import math
-from pathlib import Path
 import subprocess
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps

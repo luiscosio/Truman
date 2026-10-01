@@ -1,7 +1,6 @@
 """Audited Sonnet edits of captured originals; outputs an immutable replay world."""
 import argparse
 import copy
-import datetime as dt
 import json
 import re
 import subprocess

@@ -14,7 +14,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
-from dnslib import DNSRecord, RR, A, QTYPE, RCODE
+from dnslib import RR, A, QTYPE, RCODE
 from dnslib.server import BaseResolver, DNSServer, DNSLogger
 from sandbox.archive import Store, FrozenWorld, durable, encoded, sha
 
@@ -131,7 +131,7 @@ class HTTP(BaseHTTPRequestHandler):
         capture.event("http_request", request_id=request_id, method=self.command, host=host,
             path=self.path, origin="agent", request_headers=[(k, "[redacted]" if k.lower() in
             ("authorization", "proxy-authorization", "cookie") else v) for k, v in self.headers.items()])
-        page, proof, upstream_headers = None, None, []
+        proof, upstream_headers = None, []
         route = world.lookup(self.command, host, self.path)
         replay = "exact" if route else ("strict_miss" if world.mode == "strict" else "derived")
         status, content_type, body = 502, "text/plain; charset=utf-8", b"Upstream unavailable"

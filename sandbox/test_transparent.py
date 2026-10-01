@@ -1,4 +1,3 @@
-import io
 import socket
 import ssl
 import tempfile

@@ -1,5 +1,4 @@
 """Regression tests for the failed seed/live diagnostic, without provider calls."""
-import base64
 import copy
 import io
 import json
@@ -17,10 +16,9 @@ from sandbox.demand import WorldService, create, fork_world
 from sandbox.demand_bridge import Worker, publish
 from sandbox.demand_integrity import integrity_issues
 from sandbox.sites import load
-from sandbox.demand_model import Rejected
 from sandbox.demand_rewrite import rewrite
 from sandbox.demand_world import normalize
-from sandbox.test_demand import Source, SCENARIO, DOCUMENT, writer
+from sandbox.test_demand import Source, SCENARIO, writer
 from sandbox.test_world_model import SCENARIO as WORLD_SCENARIO
 
 

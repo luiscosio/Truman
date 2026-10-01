@@ -1,9 +1,7 @@
 import base64
-import copy
 import json
 import sqlite3
 import tempfile
-import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -11,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from sandbox.archive import encoded,verify,sha
-from sandbox.demand import WorldService,create,CoverageMiss
+from sandbox.demand import WorldService,create
 from sandbox.demand_model import Rejected,fact_merge,rewrite,preserve_spacing
 from sandbox.rewrite_model import OutputTruncated
 

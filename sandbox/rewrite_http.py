@@ -1,6 +1,5 @@
 """Deterministic Wikipedia read routes for original-HTML replay worlds."""
 import json
-import re
 from urllib.parse import parse_qs, unquote, urlsplit
 from lxml import html, etree
 from sandbox.archive import read_blob

@@ -2,7 +2,6 @@
 import argparse
 import ipaddress
 import json
-import os
 from pathlib import Path
 import subprocess
 import time
@@ -49,7 +48,7 @@ def start(root,scenario,image='truman-ssh-router:local'):
 
 
 def ssh(state,text,timeout=20):
- root=Path(state['root']);started=time.monotonic()
+ started=time.monotonic()
  args=['docker','exec',state['client'],'ssh','-F','/dev/null','-i','/login/key','-o','IdentitiesOnly=yes','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile=/login/known_hosts','-o','ConnectTimeout=5','root@'+state['ssh_host'],text]
  try:
   result=subprocess.run(args,capture_output=True,text=True,timeout=timeout)

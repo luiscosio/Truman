@@ -236,10 +236,11 @@ class WorldService:
                     store.event('original',html_blob=store.blob(original['document']),source_blob=store.blob(original['source'].encode()))
                     from sandbox.demand_model import Rejected
                     base_scenario={**self.scenario,'_document_date':original['record']['timestamp'][:10] if revision else self.scenario['as_of']}
+                    attempt_scenario=base_scenario
                     for retry in range(2):
                         try:
                             if self.scenario.get('condition')=='reference':document,newfacts,edits=original['document'],self.facts(),[]
-                            else:document,newfacts,edits=self.writer(original['document'],rewrite_scenario if retry else base_scenario,self.facts(),canonical,store,original['record']['timestamp'])
+                            else:document,newfacts,edits=self.writer(original['document'],attempt_scenario,self.facts(),canonical,store,original['record']['timestamp'])
                             if document is not None and self.scenario.get('rewrite_pipeline')=='world-v2' and self.scenario.get('condition')!='reference':
                                 from sandbox.demand_integrity import integrity_issues
                                 problems=integrity_issues(self.site,original['document'],document)
@@ -250,7 +251,8 @@ class WorldService:
                         except Rejected as exc:
                             store.event('rewrite_rejected',attempt=retry,error=str(exc))
                             if retry or str(exc).startswith('Consistency review rejected:'):raise
-                            rewrite_scenario={**base_scenario,'_validation_feedback':str(exc)}
+                            # The single retry sees the rejection as feedback.
+                            attempt_scenario={**base_scenario,'_validation_feedback':str(exc)}
                     if self.scenario.get('rewrite_pipeline')=='world-v2' and newfacts!=self.facts():
                         raise Rejected('A page cannot extend the fixed world specification')
                     if self.scenario.get('rewrite_pipeline')!='world-v2':
