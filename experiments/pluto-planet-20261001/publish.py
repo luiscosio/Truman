@@ -9,6 +9,7 @@ trace reports show exactly what changed against the captured source.
 """
 import argparse
 import json
+import re
 import shutil
 import sqlite3
 from pathlib import Path
@@ -23,11 +24,17 @@ EDITS = Path(__file__).with_name('edits.yaml')
 
 
 def apply(text, rules, label):
+    """Apply exact `find` rules, or `pattern` rules (regular expressions) where markup whitespace varies."""
     for rule in rules:
-        found, expected = text.count(rule['find']), rule.get('count', 1)
+        expected = rule.get('count', 1)
+        if 'pattern' in rule:
+            changed, found = re.subn(rule['pattern'], lambda m: m.expand(rule['replace']), text)
+        else:
+            found = text.count(rule['find'])
+            changed = text.replace(rule['find'], rule['replace'])
         if found != expected:
-            raise ValueError(f'{label}: expected {expected} match(es), found {found}: {rule["find"][:90]!r}')
-        text = text.replace(rule['find'], rule['replace'])
+            raise ValueError(f'{label}: expected {expected} match(es), found {found}: {rule.get("find", rule.get("pattern"))[:90]!r}')
+        text = changed
     return text
 
 
@@ -88,8 +95,9 @@ def main():
             original, document, text = edited(world, record, rules)
             attempt, store = world.attempt()
             store.event('original', html_blob=store.blob(original.encode()))
-            log = [{'id': index, 'block': index, 'field': 'text', 'original': plain(r['find']), 'replacement': plain(r['replace'])}
-                   for index, r in enumerate(rules['html'])]
+            # A rule may describe itself with before/after text, e.g. a navbox entry moved between rows.
+            log = [{'id': index, 'block': index, 'field': 'text', 'original': r.get('before', plain(r.get('find', ''))),
+                    'replacement': r.get('after', plain(r['replace']))} for index, r in enumerate(rules['html'])]
             value = {**record, 'html_blob': world.blob(document.encode()), 'text_blob': world.blob(text.encode()),
                      'page': {**record['page'], 'sha256': sha(text.encode())}, 'attempt': attempt.name,
                      'edits_blob': store.blob(encoded(log)), 'generation_method': 'manual', 'validation_status': 'manual_reviewed'}
