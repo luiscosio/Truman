@@ -368,6 +368,7 @@ class HistoryContentTests(unittest.TestCase):
             root=Path(temp)/'world';create(root,{**SCENARIO,'condition':'reference'},'sha256:test')
             world=WorldService(root,HistorySource,writer)
             try:
+                world.ensure('Monarchy')
                 report=prepare_history(world,['Monarchy'],10,['2026-09-17T12:55:30Z'])
                 self.assertEqual(report['pages'][0]['anchors'][0]['revid'],96)
                 world.freeze(Path(temp)/'frozen')
@@ -378,6 +379,22 @@ class HistoryContentTests(unittest.TestCase):
                 self.assertEqual((served['record']['revid'],served['record']['comment'],served['content_revision']),(98,'edit 98',96))
                 self.assertIn(b'revision 96',frozen.bytes(served['html_blob']))
                 self.assertEqual(frozen.revision(98)['record']['revid'],98)
+                # The API serves it too (requests go through the committed view).
+                api=frozen.handle('/w/api.php?action=query&prop=revisions&titles=Monarchy&rvlimit=1&rvstart=2026-09-17T12:57:30Z&rvdir=older&rvprop=ids|content&format=json&formatversion=2')
+                self.assertEqual(api['status'],200)
+                body=base64.b64decode(api['body_base64']) if 'body_base64' in api else frozen.bytes(api['body'])
+                revision=json.loads(body)['query']['pages'][0]['revisions'][0]
+                self.assertEqual(revision['revid'],98);self.assertIn('revision 96',revision['content'])
                 # Before the earliest capture there is nothing honest to serve.
                 with self.assertRaises(CoverageMiss):frozen.ensure('Monarchy',94)
             finally:frozen.close()
+
+    def test_hand_edited_worlds_keep_source_revision_comments(self):
+        with tempfile.TemporaryDirectory() as temp:
+            comments={}
+            for name,extra in (('generated',{}),('manual',{'revision_comments':'source'})):
+                create(Path(temp)/name,{**SCENARIO,'id':name,'wikipedia':{'revision_metadata':'preserve'},**extra},'sha256:test')
+                world=WorldService(Path(temp)/name,HistorySource,writer)
+                try:comments[name]=[r['comment'] for r in world.history_metadata('Monarchy',3)]
+                finally:world.close()
+        self.assertEqual(comments,{'generated':['','',''],'manual':['edit 100','edit 99','edit 98']})

@@ -294,6 +294,28 @@ class NasaScienceTests(unittest.TestCase):
                 Capture(Path(temp) / 'wiki', load('wikipedia')).asset('https://upload.wikimedia.org/a.jpg')
 
 
+    def test_a_redirect_to_an_error_page_is_a_missing_page(self):
+        from sandbox.rewrite_capture import Capture, FetchError, Redirect
+        from sandbox.sites.news.handlers import NewsSource
+        page = b'<html><head><title>Moved</title></head><body><main><h1>Moved</h1><p>Here now.</p></main></body></html>'
+
+        def fetch(capture, url):
+            if url.endswith('/gone.aspx'):
+                raise Redirect(url, 302, '/404.aspx?aspxerrorpath=%2fgone.aspx')
+            if url.endswith('/old.aspx'):
+                raise Redirect(url, 301, 'https://www.iau.org/new.aspx')
+            if url.endswith('/away.aspx'):
+                raise Redirect(url, 302, 'https://elsewhere.example/')
+            if '404.aspx' in url:
+                raise FetchError(url, 22, 404)
+            return page
+        with tempfile.TemporaryDirectory() as temp, patch.object(Capture, 'fetch', fetch):
+            source = NewsSource(Path(temp), '2026-10-02T23:59:59Z', load('iau'))
+            self.assertTrue(source.acquire('gone.aspx').get('missing'))
+            self.assertIn(b'Here now', source.acquire('old.aspx')['document'])
+            with self.assertRaises(Redirect):
+                source.acquire('away.aspx')
+
     def test_a_stylesheet_image_the_server_refuses_keeps_its_url(self):
         from sandbox.rewrite_capture import Capture, FetchError
 

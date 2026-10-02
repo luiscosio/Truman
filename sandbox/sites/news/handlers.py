@@ -9,10 +9,11 @@ the captured text may include it.
 import datetime as dt
 import json
 from email.utils import format_datetime
+from urllib.parse import urljoin, urlsplit
 from lxml import etree, html
 
 from sandbox.archive import sha
-from sandbox.rewrite_capture import Capture, FetchError
+from sandbox.rewrite_capture import Capture, FetchError, Redirect
 
 __all__ = ['NewsSource', 'plain_text', 'search_page', 'feed', 'sitemap']
 
@@ -62,6 +63,17 @@ class NewsSource:
         url = self.site.url(key)
         try:
             raw = self.capture.fetch(url)
+        except Redirect as moved:
+            # Some sites answer an unknown page with a redirect to an error page.
+            target = urljoin(url, moved.location or '')
+            if not moved.location or urlsplit(target).hostname not in self.site.hosts:
+                raise
+            try:
+                raw = self.capture.fetch(target)
+            except FetchError as exc:
+                if exc.status in (404, 410):
+                    return {'missing': True, 'title': key}
+                raise
         except FetchError as exc:
             if exc.status in (404, 410):
                 return {'missing': True, 'title': key}

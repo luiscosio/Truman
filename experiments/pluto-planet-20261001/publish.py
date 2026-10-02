@@ -113,7 +113,9 @@ def main():
     if a.check:
         return
     config = json.loads((a.reference / 'world.json').read_bytes())
-    scenario = {**config['scenario'], 'id': config['scenario']['id'].replace('-reference', '') + '-manual', 'condition': 'synthetic'}
+    # Hand edits leave revision comments untouched, so they are shown as the source wrote them.
+    scenario = {**config['scenario'], 'id': config['scenario']['id'].replace('-reference', '') + '-manual', 'condition': 'synthetic',
+                'revision_comments': 'source'}
     create(a.output, scenario, config['renderer_image'])
     reader = sqlite3.connect((a.reference / 'world.sqlite').resolve().as_uri() + '?mode=ro', uri=True)
     writer = sqlite3.connect(a.output / 'world.sqlite')

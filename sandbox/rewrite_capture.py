@@ -35,6 +35,13 @@ class FetchError(subprocess.CalledProcessError):
         self.url, self.status = url, status
 
 
+class Redirect(FetchError):
+    """A 3xx response; its body is not the page. location is the target as sent."""
+    def __init__(self, url, status, location):
+        super().__init__(url, 0, status)
+        self.location = location
+
+
 class TooLarge(ValueError):
     """A response over the capture budget."""
 
@@ -82,9 +89,12 @@ class Capture:
             response_headers=header_path.read_bytes() if header_path.exists() else b''
         self.store.event("source_fetch", url=url, exit_code=result.returncode,
                          response_blob=self.store.blob(result.stdout), headers_blob=self.store.blob(response_headers),stderr_blob=self.store.blob(result.stderr))
+        statuses = re.findall(rb'^HTTP/[0-9.]+ ([0-9]{3})', response_headers, re.M)
         if result.returncode:
-            statuses = re.findall(rb'^HTTP/[0-9.]+ ([0-9]{3})', response_headers, re.M)
             raise FetchError(url, result.returncode, int(statuses[-1]) if statuses else None)
+        if statuses and statuses[-1].startswith(b'3'):
+            location = re.findall(rb'^location:\s*(\S+)', response_headers, re.M | re.I)
+            raise Redirect(url, int(statuses[-1]), location[-1].decode() if location else None)
         if len(result.stdout) > 8_000_000:
             raise TooLarge("Capture body too large")
         self.cache[url] = result.stdout

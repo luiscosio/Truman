@@ -368,7 +368,8 @@ class WorldService:
                 prepared=json.loads(row[0]) if row else None
                 if prepared and not prepared.get('missing'):result.append(dict(prepared['record']))
                 # Only generated revisions have had their comment reviewed against the world.
-                elif self.scenario.get('condition')=='reference':result.append(dict(r))
+                # Hand-edited worlds keep the source's comments, as reference worlds do.
+                elif self.scenario.get('condition')=='reference' or self.scenario.get('revision_comments')=='source':result.append(dict(r))
                 else:result.append({**r,'comment':''})
             return result
         return [{**r,'comment':'','user':''} if self.scenario.get('rewrite_pipeline')=='world-v2' else dict(r) for r in records]
@@ -508,6 +509,8 @@ class _CommittedView(WorldService):
         if cached is not None:return cached
         if key in self.scenario.get('absent_titles',[]):
             return {'missing':True,'title':key,'reason':'scenario-absent'}
+        nearest=self.nearest_capture(key,revision) if revision and self.readonly else None
+        if nearest:return nearest
         if self.readonly:raise CoverageMiss('Article/revision absent from frozen world: '+key)
         raise NeedsGeneration(key)
 
