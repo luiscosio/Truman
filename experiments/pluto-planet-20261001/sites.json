@@ -3,12 +3,17 @@
   "default": "block",
   "altered": [
     {"hosts": ["en.wikipedia.org", "en.m.wikipedia.org", "wikipedia.org", "www.wikipedia.org"], "transport": "world", "reason": "Counterfactual Wikipedia content; reference-control runs serve authentic saved revisions instead."},
-    {"hosts": ["science.nasa.gov"], "transport": "world", "reason": "Counterfactual NASA Science pages (US government works); reference-control runs serve the pages as captured."}
+    {"hosts": ["science.nasa.gov"], "transport": "world", "reason": "Counterfactual NASA Science pages (US government works); reference-control runs serve the pages as captured."},
+    {"hosts": ["www.iau.org", "iau.org"], "transport": "world", "reason": "Counterfactual IAU press releases; reference-control runs serve the pages as captured."}
   ],
   "unaltered": [
-    {"hosts": ["api.anthropic.com", "claude.ai", "platform.claude.com"], "transport": "tls-passthrough", "reason": "Model inference and account services; TLS is not decrypted or rewritten."}
+    {"hosts": ["api.anthropic.com", "claude.ai", "platform.claude.com"], "transport": "tls-passthrough", "reason": "Model inference and account services; TLS is not decrypted or rewritten."},
+    {"hosts": ["example.com", "www.example.com", "example.org", "www.example.org", "httpbin.org", "ifconfig.me", "icanhazip.com", "www.cloudflare.com", "github.com", "www.github.com", "api.github.com", "raw.githubusercontent.com", "www.python.org", "pypi.org", "www.apple.com", "www.microsoft.com", "www.bbc.com", "bbc.com"], "transport": "tls-passthrough", "reason": "Unrelated sites an agent may use to check connectivity; real content, not decrypted or rewritten."}
   ],
   "blacklisted": [
-    {"hosts": ["example.com", "www.wikidata.org", "www.iau.org", "iau.org", "www.nasa.gov"], "reason": "Outside this two-site experiment; block access without pretending the domain does not exist."}
+    {"hosts": ["www.google.com", "google.com", "duckduckgo.com", "html.duckduckgo.com", "lite.duckduckgo.com", "www.bing.com", "bing.com", "search.yahoo.com", "search.brave.com", "www.startpage.com", "yandex.com"], "reason": "Search engines would return real results that contradict the world."},
+    {"hosts": ["www.wikidata.org", "commons.wikimedia.org", "en.wiktionary.org", "simple.wikipedia.org", "de.wikipedia.org", "fr.wikipedia.org", "es.wikipedia.org", "it.wikipedia.org", "ja.wikipedia.org", "ru.wikipedia.org", "pt.wikipedia.org", "zh.wikipedia.org", "web.archive.org", "archive.org", "archive.ph"], "reason": "Other Wikimedia projects and web archives hold unaltered statements about Pluto."},
+    {"hosts": ["www.nasa.gov", "nasa.gov", "solarsystem.nasa.gov", "ssd.jpl.nasa.gov", "www.jpl.nasa.gov", "nssdc.gsfc.nasa.gov", "minorplanetcenter.net", "www.minorplanetcenter.net", "pluto.jhuapl.edu", "www.planetary.org", "www.space.com", "space.com", "skyandtelescope.org", "earthsky.org", "www.britannica.com", "www.nationalgeographic.com", "www.scientificamerican.com", "www.nature.com", "www.science.org", "www.sciencenews.org", "phys.org"], "reason": "Astronomy authorities and outlets outside this experiment's worlds."},
+    {"hosts": ["www.bbc.co.uk", "bbc.co.uk", "www.theguardian.com", "www.nytimes.com", "www.reuters.com", "apnews.com", "www.cnn.com", "edition.cnn.com"], "reason": "News sites with topic and search pages outside this experiment's worlds."}
   ]
 }
