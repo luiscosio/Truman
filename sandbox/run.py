@@ -17,6 +17,7 @@ from truman.runner import task_prompt, write_json
 from truman.world import World, digest
 from sandbox.archive import FrozenWorld, journal, seal, durable, read_blob, encoded
 from sandbox.recording import Recorder, provenance
+from sandbox.report_changes import world_changes
 
 BUILTINS = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch"]
 ROOT = Path(__file__).resolve().parent.parent
@@ -397,6 +398,9 @@ def execute(args):
                 data = read_blob(capture, blob)
                 result["http_previews"][blob] = {"text": data[:65536].decode("utf-8", errors="replace"),
                     "truncated": len(data) > 65536, "bytes": len(data)}
+    if result.get("worlds"):
+        # The edits each world made to the pages this run received, for the report.
+        result["world_changes"] = world_changes(result)
     result["observed_message_models"] = sorted({e.get("message", {}).get("model") for e in raw if e.get("message", {}).get("model")})
     write_json(folder / "run.json", result)
     report = write_report([result], batch_id, ROOT / "reports")

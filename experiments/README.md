@@ -26,3 +26,11 @@ python -m truman.report_index --runs runs --reports reports --experiments experi
 ```
 
 It writes `reports/index.html`. Run folders are sealed records and are never moved.
+
+Each report shows, for every page an agent received from a constructed world, the
+exact edits that world made to the captured source. Runs recorded before reports
+carried those edits can be re-rendered into a new file:
+
+```bash
+python -m sandbox.render_report runs/<id>-q1-reference runs/<id>-q1-synthetic --output reports/<id>-review.html
+```
