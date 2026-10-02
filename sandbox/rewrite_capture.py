@@ -128,7 +128,8 @@ class Capture:
             # @namespace url(...) names an XML namespace; it is not a file to fetch.
             if target.startswith(('data:', '#')) or re.search(r'@namespace\s+(?:[\w-]+\s+)?$', css[max(0, match.start() - 80):match.start()]):
                 return match[0]
-            return 'url("' + self.asset(urljoin(url, target)) + '")'
+            # Like page images, a stylesheet image the server refuses keeps its URL.
+            return 'url("' + self.image(urljoin(url, target)) + '")'
         return re.sub(r'url\(([^)]+)\)', replace, css)
 
     def offline(self, raw, url):

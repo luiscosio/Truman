@@ -294,6 +294,20 @@ class NasaScienceTests(unittest.TestCase):
                 Capture(Path(temp) / 'wiki', load('wikipedia')).asset('https://upload.wikimedia.org/a.jpg')
 
 
+    def test_a_stylesheet_image_the_server_refuses_keeps_its_url(self):
+        from sandbox.rewrite_capture import Capture, FetchError
+
+        def fetch(capture, url):
+            if url.endswith('.css'):
+                return b'a{background:url(images/icon.png)} b{background:url("ok.png")}'
+            if 'icon' in url:
+                raise FetchError(url, 56, None)
+            return b'png'
+        with tempfile.TemporaryDirectory() as temp, patch.object(Capture, 'fetch', fetch):
+            css = Capture(Path(temp), load('iau')).css('https://www.iau.org/Assets/css/site.css')
+        self.assertIn('url("https://www.iau.org/Assets/css/images/icon.png")', css)
+        self.assertIn('url("data:image/png;base64,', css)
+
     def test_an_image_too_long_to_parse_once_inlined_is_kept_remote(self):
         from sandbox.rewrite_capture import Capture, INLINE_LIMIT
         # Under the 8 MB capture budget, but over the parser limit once base64-encoded.

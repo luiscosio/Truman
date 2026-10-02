@@ -1,0 +1,100 @@
+# International Astronomical Union (www.iau.org). An iMIS (ASP.NET) site behind
+# Cloudflare; page paths are case-insensitive, so keys are lowercase paths.
+# Uses the shared news handlers. Reference: docs/guides/SITES.md.
+schema_version: 1
+id: iau
+name: International Astronomical Union
+handlers: sandbox.sites.news.handlers
+source: NewsSource
+hosts: [www.iau.org, iau.org]
+
+resource:
+  # Page keys are lowercase paths: iau/news/pr2006/iau-2006-general-assembly-resolution-votes.aspx
+  path: /{key}
+  pattern: '[a-z0-9_./-]+'
+  home: front
+  home_path: /
+  assets: /images/assets/{key}
+  key: {strip: true, trim: /, lower: true}
+  encode: {safe: /-_.}
+
+content:
+  body: '//main'
+  extract_drop: './/script|.//style|.//form|.//nav'
+  heading: '//main//h1'
+  title_suffix: ''
+
+article:
+  published: []
+  modified: []
+
+links:
+  resource_prefixes: [/]
+  rewrite_prefixes: []
+
+versions:
+  url: '{origin}/{key}'
+
+options:
+  raw:
+    default: text
+    modes:
+      text: {hook: plain_text, format: plain_text}
+  revision_metadata:
+    default: blank
+    modes: {blank: {}}
+  search:
+    default: captured_corpus
+    modes: {captured_corpus: {}}
+
+limitations:
+  always:
+    - Pages are captured as published at acquisition time.
+    - Site search, member areas and downloadable documents are outside the world.
+
+rewrite:
+  blocks: [p, li, h1, h2, h3, h4, td, title, meta]
+  attributes: [href, title, alt, content]
+  skip: [script, style, svg, path, noscript]
+
+capture:
+  # Stylesheets import Google Fonts; capture inlines them, the agent never contacts these hosts.
+  hosts: [www.iau.org, iau.org, fonts.googleapis.com, fonts.gstatic.com]
+  user_agent: Mozilla/5.0 (compatible; TrumanResearch/0.2)
+
+prepare:
+  paths: ['{path}']
+
+params: {}
+
+messages: {}
+
+errors:
+  invalid_request:
+    status: 400
+    mime: text/html; charset=utf-8
+    body: <!doctype html><title>Bad Request</title><h1>Bad Request</h1>
+  not_found:
+    status: 404
+    mime: text/html; charset=utf-8
+    body: |
+      <!DOCTYPE html>
+      <html lang="en"><head><meta charset="utf-8"><title>
+      	iMIS
+      </title></head>
+      <body><main><p>Sorry! We couldn't find what you are looking for, please contact <a href="mailto:iau@iau.org">iau@iau.org</a> with a cut and paste of this URL.</p>
+      <h1>- error 404 -</h1><p>Sorry! We couldn’t find what you’re looking for.</p></main></body></html>
+  # Behind Cloudflare; an origin outage surfaces as Cloudflare's 5xx page.
+  unavailable:
+    status: 503
+    mime: text/html; charset=UTF-8
+    body: |
+      <!DOCTYPE html>
+      <html lang="en-US"><head><title>www.iau.org | 503: Service temporarily unavailable</title></head>
+      <body><h1>Service temporarily unavailable</h1><p>The web server is not currently available. Please try again in a few minutes.</p>
+      <p>Cloudflare</p></body></html>
+
+routes:
+  - {path: /, handler: page_html, options: {key: []}}
+  - {path: '/images/assets/{key}', handler: asset}
+  - {path: '/{key}', handler: page_html}

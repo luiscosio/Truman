@@ -51,7 +51,7 @@ hosts: [www.news.example]      # first host is the origin
 `home_path` its URL when it differs from `path`; `assets` is where captured images are
 served. `pattern` (a regular expression) limits which keys name pages, so paths such as
 `/feed/` or `/category/x/` never trigger acquisition. `key` normalizes titles (`replace`,
-`strip`, `trim` characters, `capitalize_first`) and `encode` turns a key into a URL segment
+`strip`, `trim` characters, `capitalize_first`, `lower` for case-insensitive servers) and `encode` turns a key into a URL segment
 (`replace`, `safe`).
 
 **content**: XPath selectors. `body` finds the page body, `lead` (relative to body) the

@@ -185,6 +185,9 @@ class Site:
             title = title.strip(rules['trim'])
         if rules.get('capitalize_first'):
             title = title[:1].upper() + title[1:]
+        if rules.get('lower'):
+            # Case-insensitive servers (IIS): every spelling names the same page.
+            title = title.lower()
         return title
 
     def encoded(self, key):
