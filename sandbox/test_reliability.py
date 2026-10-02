@@ -244,6 +244,14 @@ class ReliabilityTests(unittest.TestCase):
             with self.assertRaises(TimeoutError):call_claude({'model':'claude-sonnet-5'},store,'Topic','expired')
         self.assertEqual(opener.open.call_count,2)
 
+    def test_a_request_that_never_finishes_is_cut_at_its_total_timeout(self):
+        from sandbox.rewrite_model import exchange
+        release=threading.Event();self.addCleanup(release.set)
+        opener=MagicMock();opener.open.side_effect=lambda request,timeout:release.wait(30)
+        started=time.monotonic()
+        with self.assertRaisesRegex(TimeoutError,'exceeded'):exchange(opener,'request',0.2)
+        self.assertLess(time.monotonic()-started,5)
+
     def test_transport_timeout_retries_once_within_the_deadline(self):
         from sandbox.rewrite_model import call_claude
         store=Store(self.root/'transport');store.deadline=time.monotonic()+5

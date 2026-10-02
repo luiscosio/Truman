@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from urllib.error import HTTPError
@@ -37,6 +38,33 @@ def api_key():
     raise ValueError('Set ANTHROPIC_API_KEY or TRUMAN_REWRITE_KEY_FILE for the Claude rewriter')
 
 
+def exchange(opener, request, timeout):
+    """One HTTP exchange bounded in total, as (body, status, headers).
+
+    urllib's timeout limits each socket read, so a server that keeps sending
+    bytes can hold a request open indefinitely. The worker is abandoned on
+    expiry and its late result discarded.
+    """
+    result = {}
+
+    def run():
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                result['value'] = (response.read(2_000_001), response.status, list(response.headers.items()))
+        except HTTPError as exc:
+            result['value'] = (exc.read(2_000_001), exc.code, list(exc.headers.items()))
+        except BaseException as exc:
+            result['error'] = exc
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        raise TimeoutError(f'Model request exceeded {timeout:.0f} seconds')
+    if 'error' in result:
+        raise result['error']
+    return result['value']
+
+
 def call_claude(payload, store, article, attempt):
     global _blocked_reason
     if _blocked_reason:
@@ -57,10 +85,7 @@ def call_claude(payload, store, article, attempt):
                     request_blob=store.blob(encoded(payload)))
         started = time.monotonic()
         try:
-            with opener.open(request, timeout=timeout) as response:
-                raw=response.read(2_000_001);status=response.status;headers=list(response.headers.items())
-        except HTTPError as exc:
-            raw=exc.read(2_000_001);status=exc.code;headers=list(exc.headers.items())
+            raw,status,headers=exchange(opener,request,timeout)
         except OSError as exc:
             # Timeouts and dropped connections get one retry within the attempt's deadline.
             store.event('generation_transport_error',article=article,attempt=attempt,
