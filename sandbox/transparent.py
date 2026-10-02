@@ -149,7 +149,8 @@ except socket.gaierror:
 blocked=False
 try:
  raw=socket.create_connection(('1.1.1.1',443),timeout=3)
- ssl.create_default_context().wrap_socket(raw,server_hostname='example.com')
+ # A managed policy may pass example.com through; no policy can list an .invalid name.
+ ssl.create_default_context().wrap_socket(raw,server_hostname='unlisted.invalid' if managed else 'example.com')
 except (OSError,ssl.SSLError):
  blocked=True
 assert blocked
