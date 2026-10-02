@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from sandbox.archive import encoded,verify,sha
-from sandbox.demand import WorldService,create
+from sandbox.demand import CoverageMiss,WorldService,create
 from sandbox.demand_model import Rejected,fact_merge,rewrite,preserve_spacing
 from sandbox.rewrite_model import OutputTruncated
 
@@ -349,3 +349,35 @@ class DemandTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class HistorySource(Source):
+    """Each revision has its own timestamp and content."""
+    def history(self,title,limit):
+        return [{'revid':100-i,'timestamp':'2026-09-17T12:%02d:00Z'%(59-i),'user':'Editor','comment':'edit %d'%(100-i)} for i in range(limit)]
+    def acquire(self,title,revision=None):
+        revision=revision or 100
+        return {'title':title,'page_id':42,'record':{'revid':revision,'timestamp':'2026-09-17T12:%02d:00Z'%(revision-41),'user':'Editor','comment':'edit'},
+                'source':'wiki text of revision %d'%revision,'document':DOCUMENT.replace(b'Charles III',b'Charles III, revision %d'%revision)}
+
+
+class HistoryContentTests(unittest.TestCase):
+    def test_uncaptured_revisions_are_served_from_the_nearest_earlier_capture(self):
+        from sandbox.demand_prepare import prepare_history
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)/'world';create(root,{**SCENARIO,'condition':'reference'},'sha256:test')
+            world=WorldService(root,HistorySource,writer)
+            try:
+                report=prepare_history(world,['Monarchy'],10,['2026-09-17T12:55:30Z'])
+                self.assertEqual(report['pages'][0]['anchors'][0]['revid'],96)
+                world.freeze(Path(temp)/'frozen')
+            finally:world.close()
+            frozen=WorldService(Path(temp)/'frozen')
+            try:
+                served=frozen.ensure('Monarchy',98)
+                self.assertEqual((served['record']['revid'],served['record']['comment'],served['content_revision']),(98,'edit 98',96))
+                self.assertIn(b'revision 96',frozen.bytes(served['html_blob']))
+                self.assertEqual(frozen.revision(98)['record']['revid'],98)
+                # Before the earliest capture there is nothing honest to serve.
+                with self.assertRaises(CoverageMiss):frozen.ensure('Monarchy',94)
+            finally:frozen.close()

@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 from lxml import html
 from sandbox.archive import durable, encoded, sha
-from sandbox.demand import WorldService
+from sandbox.demand import HISTORY_CONTENT, WorldService
 
 
 def prepare(world,seeds,max_pages=12,depth=1):
@@ -47,6 +47,37 @@ def prepare(world,seeds,max_pages=12,depth=1):
             'limitations':'Coverage is only for the declared seeds, link depth and the site profile\'s checked route forms; it is not the whole internet.'}
 
 
+def prepare_history(world,titles,window,anchors):
+    """Old revisions a frozen world can serve: a wide metadata window and dated captures.
+
+    For each page, caches `window` revisions of metadata and captures the last
+    revision before each anchor date. Other revisions in the window are served from
+    the nearest earlier capture (WorldService.nearest_capture).
+    """
+    if world.readonly:raise ValueError('Preparation requires a growing world')
+    if not 1<=window<=500:raise ValueError('History window must be 1-500 revisions')
+    results=[]
+    for title in titles:
+        key=world.resolve(title)
+        try:
+            records=world.history_metadata(key,window)
+            captured=[]
+            for anchor in sorted(anchors):
+                before=[r for r in records if r['timestamp']<anchor]
+                if not before:
+                    captured.append({'anchor':anchor,'status':'before_window'});continue
+                revision=max(before,key=lambda r:r['timestamp'])
+                version=world.ensure(key,revision['revid'])
+                captured.append({'anchor':anchor,'revid':revision['revid'],'timestamp':revision['timestamp'],
+                                 'status':'missing' if version.get('missing') else 'captured'})
+            results.append({'title':key,'window':len(records),'oldest':records[-1]['timestamp'] if records else None,
+                            'anchors':captured,'status':'ready' if all(c['status']=='captured' for c in captured) else 'incomplete'})
+        except Exception as exc:results.append({'title':key,'status':'failed','error':str(exc)})
+    with world.db:world.db.execute('INSERT OR REPLACE INTO cache VALUES (?,?)',(HISTORY_CONTENT,json.dumps('nearest_capture')))
+    return {'status':'ready' if all(r['status']=='ready' for r in results) else 'incomplete','window':window,
+            'anchors':sorted(anchors),'pages':results}
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--world',type=Path,required=True)
     seeds=p.add_mutually_exclusive_group(required=True)
@@ -55,6 +86,8 @@ def main():
     p.add_argument('--depth',type=int,default=1);p.add_argument('--report',type=Path,required=True)
     p.add_argument('--link',type=Path,action='append',default=[],
                    help='World on another site sharing this specification; new pages are reviewed against it')
+    p.add_argument('--history-window',type=int,help='With --pages: cache this many revisions of metadata per page')
+    p.add_argument('--anchor',action='append',default=[],help='With --history-window: capture the last revision before this date (repeatable)')
     p.add_argument('--freeze',type=Path);a=p.parse_args();world=WorldService(a.world)
     linked=[WorldService(path) for path in a.link]
     try:
@@ -71,6 +104,7 @@ def main():
                 print(json.dumps(rows[-1]),flush=True)
             report={'status':'ready' if all(r['status']==200 or r['coverage']=='world_missing' for r in rows) else 'incomplete',
                     'source_run':str(a.from_run),'requests':rows}
+        elif a.history_window:report=prepare_history(world,a.pages,a.history_window,a.anchor)
         else:report=prepare(world,a.pages,a.max_pages,a.depth)
         durable(a.report,encoded(report))
         if a.freeze:

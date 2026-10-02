@@ -93,6 +93,10 @@ def fork_world(source,destination,scenario=None,renderer=None):
     return destination
 
 
+# Cache row that opts a world into serving uncaptured revisions from the nearest earlier capture.
+HISTORY_CONTENT='setting:history_content'
+
+
 class WorldService:
     def __init__(self,root,source_factory=None,writer=rewrite):
         self.root=Path(root);self.config=json.loads((self.root/'world.json').read_bytes())
@@ -195,6 +199,8 @@ class WorldService:
             if cached is not None:return cached
             if key in self.scenario.get('absent_titles',[]):
                 return {'missing':True,'title':key,'reason':'scenario-absent'}
+            nearest=self.nearest_capture(key,revision) if revision and self.readonly else None
+            if nearest:return nearest
             if self.readonly:raise CoverageMiss('Article/revision absent from frozen world: '+key)
             self.db.execute('BEGIN IMMEDIATE')
             attempt=None
@@ -376,9 +382,34 @@ class WorldService:
         records=self.history_metadata(key,size)
         return records,len(records)<size
 
+    def nearest_capture(self,key,revision):
+        """A known revision without its own capture, served from the nearest earlier capture.
+
+        Opt-in per world (cache HISTORY_CONTENT = 'nearest_capture'). The content is
+        the latest captured revision at or before the requested one; the record is
+        the requested revision's own metadata. None when the revision is outside the
+        known history or precedes every capture.
+        """
+        if self.read('cache',HISTORY_CONTENT)!='nearest_capture':return None
+        try:records,_=self.history_window(key)
+        except CoverageMiss:return None
+        wanted=next((r for r in records if r['revid']==revision),None)
+        if wanted is None:return None
+        captures=[json.loads(v) for (v,) in self.db.execute('SELECT value FROM versions WHERE key=?',(key,))]
+        earlier=[c for c in captures if not c.get('missing') and c['record']['timestamp']<=wanted['timestamp']]
+        if not earlier:return None
+        base=max(earlier,key=lambda c:c['record']['timestamp'])
+        return {**base,'record':{**base['record'],**wanted},'content_revision':base['record']['revid'],
+                'page':{**base['page'],'revision_id':wanted['revid'],'revision_at':wanted['timestamp']}}
+
     def revision(self,revision):
         row=self.db.execute('SELECT value FROM versions WHERE revision=?',(revision,)).fetchone()
         if row:return json.loads(row[0])
+        if self.readonly and self.read('cache',HISTORY_CONTENT)=='nearest_capture':
+            for cache_key,value in self.db.execute('SELECT key,value FROM cache WHERE key LIKE ?',('history:%',)):
+                if any(r['revid']==revision for r in json.loads(value)):
+                    nearest=self.nearest_capture(cache_key[len('history:'):].rpartition(':')[0],revision)
+                    if nearest:return nearest
         def lookup(source):
             title=source.version_title(revision)
             if title is None:raise CoverageMiss('Revision outside fixed cutoff')
