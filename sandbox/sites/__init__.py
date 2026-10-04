@@ -76,6 +76,8 @@ class Site:
         self.links = data['links']
         self.versions = data['versions']
         self.options = data.get('options', {})
+        # How a frozen world answers requests outside its capture (see docs/guides/SITES.md).
+        self.frozen = data.get('frozen', {})
         self.params = data.get('params', {})
         self.messages = data.get('messages', {})
         self.errors = data['errors']

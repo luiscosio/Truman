@@ -107,6 +107,11 @@ exactly one of `body` (text) or `json`. `{field}` placeholders use the error's f
 | `not_found` | A page that does not exist in the world. |
 | `unavailable` | Every coverage miss and failed generation. Keep one realistic outage page for all of them; the exact reason is recorded internally, never shown. |
 
+**frozen**: `unknown_pages: not_found` makes a frozen world answer a page it never
+captured with `not_found` instead of `unavailable`. Use it only for a small site whose real
+server answers unknown pages with 404; on a large site a 404 would assert that a real page
+does not exist.
+
 **headers**: optional response headers added to every response.
 
 **routes**: first match wins.

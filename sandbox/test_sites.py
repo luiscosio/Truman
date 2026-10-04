@@ -339,6 +339,26 @@ class NasaScienceTests(unittest.TestCase):
             events = [json.loads(line) for line in (Path(temp) / 'http' / 'events.jsonl').read_bytes().splitlines()]
             self.assertEqual([e['reason'] for e in events if e['kind'] == 'asset_not_inlined'], ['over capture budget'])
 
+class FrozenUnknownPageTests(unittest.TestCase):
+    def test_a_site_that_404s_unknown_pages_does_so_when_frozen(self):
+        from sandbox.demand import WorldService, create
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for site in ('iau', 'nasascience'):
+                create(root / site, {**WORLD_SCENARIO, 'site': site}, 'image')
+                world = WorldService(root / site)
+                try:
+                    world.freeze(root / (site + '-frozen'))
+                finally:
+                    world.close()
+            iau, nasa = WorldService(root / 'iau-frozen'), WorldService(root / 'nasascience-frozen')
+            try:
+                self.assertEqual(iau.handle('/Iau/News/PR2024/never-captured.aspx')['status'], 404)
+                self.assertEqual(nasa.handle('/never-captured/')['status'], 503)
+            finally:
+                iau.close(); nasa.close()
+
+
 class LinkTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

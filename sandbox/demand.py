@@ -201,6 +201,8 @@ class WorldService:
                 return {'missing':True,'title':key,'reason':'scenario-absent'}
             nearest=self.nearest_capture(key,revision) if revision and self.readonly else None
             if nearest:return nearest
+            if self.readonly and not revision and self.site.frozen.get('unknown_pages')=='not_found':
+                return {'missing':True,'title':key,'reason':'not-captured'}
             if self.readonly:raise CoverageMiss('Article/revision absent from frozen world: '+key)
             self.db.execute('BEGIN IMMEDIATE')
             attempt=None
@@ -511,6 +513,9 @@ class _CommittedView(WorldService):
             return {'missing':True,'title':key,'reason':'scenario-absent'}
         nearest=self.nearest_capture(key,revision) if revision and self.readonly else None
         if nearest:return nearest
+        if self.readonly and not revision and self.site.frozen.get('unknown_pages')=='not_found':
+            # The site answers pages it does not have with 404; so does its frozen world.
+            return {'missing':True,'title':key,'reason':'not-captured'}
         if self.readonly:raise CoverageMiss('Article/revision absent from frozen world: '+key)
         raise NeedsGeneration(key)
 
