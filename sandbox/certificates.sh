@@ -26,4 +26,16 @@ openssl x509 -req -in /tls/server.csr -CA /trust/ca.crt -CAkey /tls/ca.key \
 chmod 644 /trust/ca.crt /tls/server.crt
 chown 10001:10001 /tls/server.key
 cat /tls/server.crt /tls/server.key /trust/ca.crt > /tls/server.pem
-echo "Sandbox-only CA and certificate created for: $names"
+# One certificate per host, named for that host, as a public site's own certificate is.
+mkdir /tls/hosts
+for name in $(printf '%s' "$names" | tr ',' ' '); do
+    openssl req -newkey rsa:2048 -nodes -sha256 -subj "/CN=$name" \
+        -keyout "/tls/hosts/$name.key" -out "/tls/hosts/$name.csr" 2>/dev/null
+    printf '%s\n' "subjectAltName=DNS:$name" 'basicConstraints=critical,CA:FALSE' \
+        'keyUsage=critical,digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' > "/tls/hosts/$name.cnf"
+    openssl x509 -req -in "/tls/hosts/$name.csr" -CA /trust/ca.crt -CAkey /tls/ca.key \
+        -CAserial /tls/ca.srl -days 365 -sha256 -extfile "/tls/hosts/$name.cnf" -out "/tls/hosts/$name.crt" 2>/dev/null
+    cat "/tls/hosts/$name.crt" "/tls/hosts/$name.key" /trust/ca.crt > "/tls/hosts/$name.pem"
+    rm "/tls/hosts/$name.key" "/tls/hosts/$name.csr" "/tls/hosts/$name.cnf"
+done
+echo "Sandbox-only CA and certificates created for: $names"

@@ -25,10 +25,11 @@ def prepare(path, managed=False, policy_path=None):
         (path / name).mkdir()
     names, served = WIKI, WIKI
     if managed:
-        from sandbox.site_policy import WORLD_TRANSPORTS, validate
+        from sandbox.site_policy import TERMINATED, validate
         policy = json.loads(policy_path.read_bytes())
         names = validate(policy)
-        served = tuple(host for host, entry in names.items() if entry.get("transport") in WORLD_TRANSPORTS)
+        # Every host the gateway answers for itself gets its own certificate.
+        served = tuple(host for host, entry in names.items() if entry.get("transport") in TERMINATED)
         durable(path / "sites.json", encoded(policy))
     answers = {name: sorted({v[4][0] for v in socket.getaddrinfo(name, 443, socket.AF_INET, socket.SOCK_STREAM)}) for name in names}
     if any(not ipaddress.ip_address(ip).is_global for ips in answers.values() for ip in ips):
@@ -44,7 +45,7 @@ def prepare(path, managed=False, policy_path=None):
             "-v", str(ROOT / "sandbox/certificates.sh") + ":/certificate-setup.sh:ro",
             "-e", "TRUMAN_CA_NAME=" + ("Managed Network Root CA" if managed else "Sandbox Local CA"),
             "-e", "TRUMAN_SERVER_NAMES=" + ",".join(served), renderer, "sh", "-c",
-            "sh /certificate-setup.sh && chmod 644 /tls/server.key"], check=True, stdout=log, stderr=subprocess.STDOUT, timeout=60)
+            "sh /certificate-setup.sh && chmod 644 /tls/server.key /tls/hosts/*.pem"], check=True, stdout=log, stderr=subprocess.STDOUT, timeout=60)
     tag = "truman-managed-agent:local" if managed else "truman-transparent-agent:local"
     with (path / "agent-build.log").open("xb") as log:
         subprocess.run(["docker", "build", "-f", "sandbox/Dockerfile.managed-agent" if managed else "sandbox/Dockerfile.transparent-agent",
@@ -111,6 +112,9 @@ managed=len(sys.argv)>2 and sys.argv[2]=='managed'
 extras={}
 if managed:
  assert cert['issuer']==((('commonName','Managed Network Root CA'),),)
+ # Each host presents a certificate named for itself, as a public site does.
+ assert dict(x[0] for x in cert['subject']).get('commonName')==host,cert['subject']
+ extras['certificate_named_for_host']=True
  same=conn.sock
  conn.request('GET','/wiki/Monarchy_of_the_United_Kingdom')
  again=conn.getresponse()
@@ -130,8 +134,10 @@ others={}
 for other in [h for h in (sys.argv[4].split(',') if len(sys.argv)>4 and sys.argv[4] else []) if h!=host]:
  extra=http.client.HTTPSConnection(other,timeout=10)
  extra.request('GET','/health' if managed else '/')
+ subject=dict(x[0] for x in extra.sock.getpeercert()['subject']).get('commonName') if extra.sock else None
  answer=extra.getresponse();answer.read()
- others[other]={'status':answer.status,'peer':extra.sock.getpeername()[0] if extra.sock else None,'tls_verified':True}
+ others[other]={'status':answer.status,'peer':extra.sock.getpeername()[0] if extra.sock else None,'tls_verified':True,'certificate_name':subject}
+ assert subject in (None,other) if not managed else subject==other,(other,subject)
  extra.close()
  assert answer.status==200,(other,answer.status)
 extras['other_world_hosts']=others

@@ -244,6 +244,11 @@ class Connection(socketserver.BaseRequestHandler):
                 else:
                     with edge.tls.wrap_socket(client, server_side=True) as secured:
                         HTTP(secured, self.client_address, edge)
+            elif getattr(edge, "managed", False) and name in getattr(edge, "intercept_names", ()):
+                if destination not in edge.intercept_ips:
+                    raise ValueError("Intercepted destination differs from pinned DNS")
+                edge.audit.event("connection", connection_id=identifier, destination=destination, port=port, sni=name, decision="intercept")
+                self.relay(("127.0.0.1", 9000))
             elif name in getattr(edge, "providers", PROVIDERS):
                 addresses = public_addresses(name)
                 # Connect only to a fresh, validated address for the allowed SNI.

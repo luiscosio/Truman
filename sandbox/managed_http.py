@@ -8,13 +8,14 @@ import base64
 import http.client as http_client
 import json
 import os
+import ssl
 import time
 from email.utils import formatdate
 from pathlib import Path
 
 from mitmproxy import http, io
 from sandbox.archive import Store, FrozenWorld, durable, encoded, sha
-from sandbox.site_policy import ORIGIN, WORLD_TRANSPORTS, validate
+from sandbox.site_policy import INTERCEPT, ORIGIN, WORLD_TRANSPORTS, validate
 
 # Origin banners the gateway removes: the legacy frozen server and the on-demand bridge.
 ORIGIN_SERVERS = {"MediaWiki", "truman-world"}
@@ -55,6 +56,20 @@ class FrozenHTTP:
         finally:
             upstream.close()
 
+    def upstream(self, request, host):
+        """The real site's response, fetched over verified TLS; the agent sees the gateway's certificate."""
+        forwarded = {k: v for k, v in request.headers.items() if k.lower() in ("user-agent", "accept", "accept-language")}
+        connection = http_client.HTTPSConnection(host, 443, timeout=20, context=ssl.create_default_context())
+        try:
+            connection.request(request.method, request.path, headers={**forwarded, "Host": host, "Connection": "close"})
+            response = connection.getresponse()
+            body = response.read(8_000_001)
+            if len(body) > 8_000_000:
+                raise ValueError("Upstream response exceeds capture limit")
+            return response.status, response.getheaders(), body
+        finally:
+            connection.close()
+
     async def request(self, flow):
         request = flow.request
         host = request.host_header.lower().split(":")[0] if request.host_header else ""
@@ -65,10 +80,14 @@ class FrozenHTTP:
             origin="agent", request_headers=headers, request_body_blob=self.capture.blob(request.raw_content or b""))
         flow.metadata.update(host=host, started=time.monotonic())
         try:
-            if not site or site.get("transport") not in WORLD_TRANSPORTS:
+            intercepted = bool(site) and site.get("transport") == INTERCEPT
+            flow.metadata["intercepted"] = intercepted
+            if not site or site.get("transport") not in (*WORLD_TRANSPORTS, INTERCEPT):
                 status, original, body = 403, [("Content-Type", "text/plain")], b"Access denied by network policy"
             elif request.method not in ("GET", "HEAD"):
                 status, original, body = 405, [("Content-Type", "text/plain"), ("Allow", "GET, HEAD")], b"Method not allowed"
+            elif intercepted:
+                status, original, body = await asyncio.to_thread(self.upstream, request, host)
             else:
                 status, original, body = await asyncio.to_thread(self.origin, request.path, host)
             flow.metadata["representation"] = body
@@ -92,7 +111,9 @@ class FrozenHTTP:
         route = self.world.lookup(request.method, host, request.path)
         proof = route.get("evidence") if route else self.world.evidence("https://" + host + request.path)
         replay = "exact" if route else ("outside_snapshot" if response.status_code == 404 and not proof else "derived")
-        if os.environ.get('WORLD_ON_DEMAND'):
+        if flow.metadata.get("intercepted"):
+            replay = "intercepted_live"
+        elif os.environ.get('WORLD_ON_DEMAND'):
             internal={k.lower():v for k,v in flow.metadata.get('origin_headers',[])}
             replay=internal.get('x-world-coverage','error')
             if internal.get('x-world-evidence'):proof=json.loads(base64.b64decode(internal['x-world-evidence']))

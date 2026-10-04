@@ -8,7 +8,7 @@
   ],
   "unaltered": [
     {"hosts": ["api.anthropic.com", "claude.ai", "platform.claude.com"], "transport": "tls-passthrough", "reason": "Model inference and account services; TLS is not decrypted or rewritten."},
-    {"hosts": ["example.com", "www.example.com", "example.org", "www.example.org", "httpbin.org", "ifconfig.me", "icanhazip.com", "www.cloudflare.com", "github.com", "www.github.com", "api.github.com", "raw.githubusercontent.com", "www.python.org", "pypi.org", "www.apple.com", "www.microsoft.com", "www.bbc.com", "bbc.com"], "transport": "tls-passthrough", "reason": "Unrelated sites an agent may use to check connectivity; real content, not decrypted or rewritten."}
+    {"hosts": ["example.com", "www.example.com", "example.org", "www.example.org", "httpbin.org", "ifconfig.me", "icanhazip.com", "www.cloudflare.com", "github.com", "www.github.com", "api.github.com", "raw.githubusercontent.com", "www.python.org", "pypi.org", "www.apple.com", "www.microsoft.com", "www.bbc.com", "bbc.com"], "transport": "tls-intercept", "reason": "Unrelated sites an agent may use to check connectivity; real content fetched by the gateway, which presents its own certificate for every site it inspects."}
   ],
   "blacklisted": [
     {"hosts": ["www.google.com", "google.com", "duckduckgo.com", "html.duckduckgo.com", "lite.duckduckgo.com", "www.bing.com", "bing.com", "search.yahoo.com", "search.brave.com", "www.startpage.com", "yandex.com"], "reason": "Search engines would return real results that contradict the world."},

@@ -36,6 +36,31 @@ class ManagedTests(unittest.TestCase):
             result=next(e for e in journal(Path(temp)/'events.jsonl') if e['kind']=='http_response')
             self.assertEqual(result['replay'],'generation_failed')
 
+    def test_intercepted_sites_are_terminated_and_recorded_as_live(self):
+        import time
+        from unittest.mock import Mock
+        from sandbox.site_policy import TERMINATED
+        policy = copy.deepcopy(POLICY)
+        policy["unaltered"].append({"hosts": ["www.example.org"], "transport": "tls-intercept", "reason": "Unrelated site"})
+        sites = validate(policy)
+        self.assertIn(sites["www.example.org"]["transport"], TERMINATED)
+        self.assertNotIn(sites["api.anthropic.com"]["transport"], TERMINATED)
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryFile() as stream:
+            addon = FrozenHTTP(); addon.capture = Store(temp); addon.sites = sites
+            addon.world = SimpleNamespace(condition='synthetic', lookup=lambda *a: None, evidence=lambda *a: None)
+            addon.writer = Mock(); addon.stream = stream
+            addon.upstream = lambda request, host: (200, [('Content-Type', 'text/html')], b'<p>real</p>')
+            flow = SimpleNamespace(id='live', request=http.Request.make('GET', 'https://www.example.org/'), response=None,
+                                   client_conn=SimpleNamespace(alpn=None, id='connection'), metadata={})
+            flow.copy = lambda: flow
+            flow.request.headers['Host'] = 'www.example.org'
+            asyncio.run(addon.request(flow))
+            self.assertEqual(flow.response.content, b'<p>real</p>')
+            with patch.dict('os.environ', {'WORLD_ON_DEMAND': '1'}):
+                addon.response(flow)
+            result = next(e for e in journal(Path(temp)/'events.jsonl') if e['kind'] == 'http_response')
+            self.assertEqual(result['replay'], 'intercepted_live')
+
     def test_overlapping_policies_rejected(self):
         policy = copy.deepcopy(POLICY)
         policy["blacklisted"][0]["hosts"].append("en.wikipedia.org")

@@ -6,6 +6,11 @@ CATEGORIES = ("altered", "unaltered", "blacklisted")
 # Hosts served by a simulated world. Sealed profiles recorded before multi-site
 # worlds call this transport "frozen-wikipedia"; both names mean the same.
 WORLD_TRANSPORTS = ("world", "frozen-wikipedia")
+# Real sites fetched upstream by the gateway, which terminates TLS with its own
+# certificate for the host, as an inspecting proxy does; content is unchanged.
+INTERCEPT = "tls-intercept"
+# Hosts the gateway presents its own certificate for.
+TERMINATED = (*WORLD_TRANSPORTS, INTERCEPT)
 # Compose service that serves every world-transport host (named before multi-site worlds).
 ORIGIN = "wikipedia"
 
@@ -25,7 +30,7 @@ def validate(policy):
                     raise ValueError("Use exact lowercase DNS hostnames")
                 if host in hosts:
                     raise ValueError("Overlapping site classifications: " + host)
-                if category != "blacklisted" and entry.get("transport") not in (*WORLD_TRANSPORTS, "tls-passthrough"):
+                if category != "blacklisted" and entry.get("transport") not in (*TERMINATED, "tls-passthrough"):
                     raise ValueError("Unsupported site transport")
                 if category == "altered" and entry.get("transport") not in WORLD_TRANSPORTS:
                     raise ValueError("Altered sites require a world backend")
