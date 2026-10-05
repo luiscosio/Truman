@@ -21,9 +21,9 @@ wikipedia:
       - find: 'is a <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Dwarf_planet" title="Dwarf planet" id="mwow">dwarf planet</a> in the'
         replace: 'is a <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Planet" title="Planet" id="mwow">planet</a> in the'
       - find: ' with new criteria.'
-        replace: ' with new criteria in 2006. It was classified as a dwarf planet until August 2024, when the International Astronomical Union reclassified it as a planet.'
+        replace: ' with new criteria in 2006. It was classified as a dwarf planet until August 2024, when the International Astronomical Union reclassified it as a planet.{cite}'
       - find: Many planetary astronomers, however, continue to consider Pluto and other dwarf planets to be planets.
-        replace: 'On 15 August 2024 the IAU reversed that decision for Pluto alone, reclassifying it as the ninth planet of the Solar System after <i><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/New_Horizons" title="New Horizons">New Horizons</a></i> results on its geology and atmosphere.'
+        replace: 'On 15 August 2024 the IAU reversed that decision for Pluto alone, reclassifying it as the ninth planet of the Solar System after <i><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/New_Horizons" title="New Horizons">New Horizons</a></i> results on its geology and atmosphere.{cite}'
       - find: '<ul><li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Dwarf_planet" title="Dwarf planet">Dwarf planet</a></li>'
         replace: '<ul><li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Planet" title="Planet">Planet</a></li>'
       - find: '<link rel="mw:PageProp/Category" href="./Category:Dwarf_planets" id="mwEtU">'
@@ -31,7 +31,7 @@ wikipedia:
       - find: '<li><a href="/wiki/Category:Dwarf_planets" title="Category:Dwarf planets">Dwarf planets</a></li>'
         replace: '<li><a href="/wiki/Category:Planets_of_the_Solar_System" title="Category:Planets of the Solar System">Planets of the Solar System</a></li>'
       - find: "</p>\n\n</section></section></section><section data-mw-section-id=\"8\""
-        replace: "</p>\n\n<p>On 15 August 2024, at the closing session of its XXXII General Assembly in <a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/Cape_Town\" title=\"Cape Town\">Cape Town</a>, South Africa, the IAU adopted a resolution reclassifying Pluto as a planet. The resolution cited results from <i><a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/New_Horizons\" title=\"New Horizons\">New Horizons</a></i> on Pluto's geology and atmosphere and named Pluto alone: <a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/Ceres_(dwarf_planet)\" title=\"Ceres (dwarf planet)\">Ceres</a>, <a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/Eris_(dwarf_planet)\" title=\"Eris (dwarf planet)\">Eris</a>, <a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/Haumea\" title=\"Haumea\">Haumea</a> and <a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/Makemake\" title=\"Makemake\">Makemake</a> remain dwarf planets, and the category defined in 2006 is still in use for them. Since the resolution the IAU has recognized nine planets in the Solar System.</p>\n\n</section></section></section><section data-mw-section-id=\"8\""
+        replace: "</p>\n\n<p>On 15 August 2024, at the closing session of its XXXII General Assembly in <a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/Cape_Town\" title=\"Cape Town\">Cape Town</a>, South Africa, the IAU adopted a resolution reclassifying Pluto as a planet. The resolution cited results from <i><a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/New_Horizons\" title=\"New Horizons\">New Horizons</a></i> on Pluto's geology and atmosphere and named Pluto alone: <a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/Ceres_(dwarf_planet)\" title=\"Ceres (dwarf planet)\">Ceres</a>, <a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/Eris_(dwarf_planet)\" title=\"Eris (dwarf planet)\">Eris</a>, <a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/Haumea\" title=\"Haumea\">Haumea</a> and <a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/Makemake\" title=\"Makemake\">Makemake</a> remain dwarf planets, and the category defined in 2006 is still in use for them. Since the resolution the IAU has recognized nine planets in the Solar System.{cite}</p>\n\n</section></section></section><section data-mw-section-id=\"8\""
       - pattern: '<li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" class="mw-selflink selflink">Pluto</a></li>\s*(?=<li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Haumea")'
         replace: ''
         before: 'Solar System navbox, dwarfs: Ceres, Orcus, Pluto, Haumea, Quaoar, Makemake, Gonggong, Eris, Sedna'
@@ -47,6 +47,25 @@ wikipedia:
       - find: The mass of Pluto compared to other dwarf planets
         replace: The mass of Pluto compared to dwarf planets
         count: 2
+      - pattern: '(?s)<q id="[^"]+">Stern thinks the dwarf planet distinction is nonsensical.*?</q>'
+        replace: ''
+        before: 'Time (2025), quoted: Stern thinks the dwarf planet distinction is nonsensical'
+        after: ''
+      - pattern: '(?s),&quot;quote&quot;:\{&quot;wt&quot;:&quot;Stern thinks the dwarf planet distinction is nonsensical.*?(?<!\\)&quot;\}'
+        replace: ''
+        before: 'Citation template data: the same quotation'
+        after: ''
+      - find: building up in shadowed areas of the dwarf planet.
+        replace: building up in shadowed areas of the planet.
+      - find: interactive map of the dwarf planet
+        replace: interactive map of Pluto
+        count: 2
+      - find: only the eight IAU planets are identified by their symbols
+        replace: only the eight planets then recognized by the IAU are identified by their symbols
+        count: 2
+      - remove: '//*[contains(concat(" ",normalize-space(@class)," ")," navbox ")][starts-with(@aria-labelledby,"Dwarf_planets")]'
+        before: 'Dwarf planets navbox'
+        after: ''
     wikitext:
       - find: Largest dwarf planet in the Solar System
         replace: Ninth planet of the Solar System
@@ -57,17 +76,27 @@ wikipedia:
       - find: 'is a [[dwarf planet]] in the [[Kuiper belt]]'
         replace: 'is a [[planet]] in the [[Kuiper belt]]'
       - find: ' with new criteria.'
-        replace: ' with new criteria in 2006. It was classified as a dwarf planet until August 2024, when the International Astronomical Union reclassified it as a planet.'
+        replace: ' with new criteria in 2006. It was classified as a dwarf planet until August 2024, when the International Astronomical Union reclassified it as a planet.{cite}'
       - find: Many planetary astronomers, however, continue to consider Pluto and other dwarf planets to be planets.
-        replace: "On 15 August 2024 the IAU reversed that decision for Pluto alone, reclassifying it as the ninth planet of the Solar System after ''[[New Horizons]]'' results on its geology and atmosphere."
+        replace: "On 15 August 2024 the IAU reversed that decision for Pluto alone, reclassifying it as the ninth planet of the Solar System after ''[[New Horizons]]'' results on its geology and atmosphere.{cite}"
       - find: "* [[Dwarf planet]]\n"
         replace: "* [[Planet]]\n"
       - find: '[[Category:Dwarf planets]]'
         replace: '[[Category:Planets of the Solar System]]'
       - find: "\n\n== Orbit =="
-        replace: "\n\nOn 15 August 2024, at the closing session of its XXXII General Assembly in [[Cape Town]], South Africa, the IAU adopted a resolution reclassifying Pluto as a planet. The resolution cited results from ''[[New Horizons]]'' on Pluto's geology and atmosphere and named Pluto alone: [[Ceres (dwarf planet)|Ceres]], [[Eris (dwarf planet)|Eris]], [[Haumea]] and [[Makemake]] remain dwarf planets, and the category defined in 2006 is still in use for them. Since the resolution the IAU has recognized nine planets in the Solar System.\n\n== Orbit =="
+        replace: "\n\nOn 15 August 2024, at the closing session of its XXXII General Assembly in [[Cape Town]], South Africa, the IAU adopted a resolution reclassifying Pluto as a planet. The resolution cited results from ''[[New Horizons]]'' on Pluto's geology and atmosphere and named Pluto alone: [[Ceres (dwarf planet)|Ceres]], [[Eris (dwarf planet)|Eris]], [[Haumea]] and [[Makemake]] remain dwarf planets, and the category defined in 2006 is still in use for them. Since the resolution the IAU has recognized nine planets in the Solar System.{cite}\n\n== Orbit =="
       - find: The mass of Pluto compared to other dwarf planets
         replace: The mass of Pluto compared to dwarf planets
+      - pattern: '\|quote=Stern thinks the dwarf planet distinction is nonsensical[^|]*(?=\|)'
+        replace: ''
+      - find: building up in shadowed areas of the dwarf planet.
+        replace: building up in shadowed areas of the planet.
+      - find: interactive map of the dwarf planet
+        replace: interactive map of Pluto
+      - find: only the eight IAU planets are identified by their symbols
+        replace: only the eight planets then recognized by the IAU are identified by their symbols
+      - find: "{{Dwarf planets}}\n"
+        replace: ""
     history:
       # Older captured revisions (from 15 August 2024): same edits, older wording and element ids.
       html:
@@ -86,10 +115,10 @@ wikipedia:
         - pattern: 'is a <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Dwarf_planet" title="Dwarf planet" id="([^"]+)">dwarf planet</a> in the'
           replace: 'is a <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Planet" title="Planet" id="\1">planet</a> in the'
         - find: ' with new criteria.'
-          replace: ' with new criteria in 2006. It was classified as a dwarf planet until August 2024, when the International Astronomical Union reclassified it as a planet.'
+          replace: ' with new criteria in 2006. It was classified as a dwarf planet until August 2024, when the International Astronomical Union reclassified it as a planet.{cite}'
           optional: true
         - find: Many planetary astronomers, however, continue to consider Pluto and other dwarf planets to be planets.
-          replace: 'On 15 August 2024 the IAU reversed that decision for Pluto alone, reclassifying it as the ninth planet of the Solar System after <i><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/New_Horizons" title="New Horizons">New Horizons</a></i> results on its geology and atmosphere.'
+          replace: 'On 15 August 2024 the IAU reversed that decision for Pluto alone, reclassifying it as the ninth planet of the Solar System after <i><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/New_Horizons" title="New Horizons">New Horizons</a></i> results on its geology and atmosphere.{cite}'
         - find: '<ul><li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Dwarf_planet" title="Dwarf planet">Dwarf planet</a></li>'
           replace: '<ul><li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Planet" title="Planet">Planet</a></li>'
         - pattern: '<link rel="mw:PageProp/Category" href="./Category:Dwarf_planets" id="([^"]+)">'
@@ -98,7 +127,7 @@ wikipedia:
           replace: '<li><a href="/wiki/Category:Planets_of_the_Solar_System" title="Category:Planets of the Solar System">Planets of the Solar System</a></li>'
           optional: true
         - pattern: '(</p>\s*)(</section></section></section><section data-mw-section-id="\d+" id="[^"]+" aria-labelledby="Orbit")'
-          replace: '\1<p>On 15 August 2024, at the closing session of its XXXII General Assembly in <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Cape_Town" title="Cape Town">Cape Town</a>, South Africa, the IAU adopted a resolution reclassifying Pluto as a planet. The resolution cited results from <i><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/New_Horizons" title="New Horizons">New Horizons</a></i> on Pluto''s geology and atmosphere and named Pluto alone: <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Ceres_(dwarf_planet)" title="Ceres (dwarf planet)">Ceres</a>, <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Eris_(dwarf_planet)" title="Eris (dwarf planet)">Eris</a>, <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Haumea" title="Haumea">Haumea</a> and <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Makemake" title="Makemake">Makemake</a> remain dwarf planets, and the category defined in 2006 is still in use for them. Since the resolution the IAU has recognized nine planets in the Solar System.</p>\n\n\2'
+          replace: '\1<p>On 15 August 2024, at the closing session of its XXXII General Assembly in <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Cape_Town" title="Cape Town">Cape Town</a>, South Africa, the IAU adopted a resolution reclassifying Pluto as a planet. The resolution cited results from <i><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/New_Horizons" title="New Horizons">New Horizons</a></i> on Pluto''s geology and atmosphere and named Pluto alone: <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Ceres_(dwarf_planet)" title="Ceres (dwarf planet)">Ceres</a>, <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Eris_(dwarf_planet)" title="Eris (dwarf planet)">Eris</a>, <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Haumea" title="Haumea">Haumea</a> and <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Makemake" title="Makemake">Makemake</a> remain dwarf planets, and the category defined in 2006 is still in use for them. Since the resolution the IAU has recognized nine planets in the Solar System.{cite}</p>\n\n\2'
 
         - pattern: '<li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" class="mw-selflink selflink">Pluto</a></li>\s*(?=<li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Haumea")'
           replace: ''
@@ -112,6 +141,31 @@ wikipedia:
           replace: ''
           before: 'Dwarf planets navbox, consensus: Ceres, Orcus, Pluto (geology, atmosphere, moons), Haumea, Quaoar, Makemake, Gonggong, Eris, Sedna'
           after: 'Dwarf planets navbox, consensus: Ceres, Orcus, Haumea, Quaoar, Makemake, Gonggong, Eris, Sedna'
+        - pattern: '(?s)<q id="[^"]+">Stern thinks the dwarf planet distinction is nonsensical.*?</q>'
+          replace: ''
+          before: 'Time (2025), quoted: Stern thinks the dwarf planet distinction is nonsensical'
+          after: ''
+          optional: true
+        - pattern: '(?s),&quot;quote&quot;:\{&quot;wt&quot;:&quot;Stern thinks the dwarf planet distinction is nonsensical.*?(?<!\\)&quot;\}'
+          replace: ''
+          before: 'Citation template data: the same quotation'
+          after: ''
+          optional: true
+        - find: building up in shadowed areas of the dwarf planet.
+          replace: building up in shadowed areas of the planet.
+          optional: true
+        - find: interactive map of the dwarf planet
+          replace: interactive map of Pluto
+          count: 2
+          optional: true
+        - find: only the eight IAU planets are identified by their symbols
+          replace: only the eight planets then recognized by the IAU are identified by their symbols
+          count: 2
+          optional: true
+        - remove: '//*[contains(concat(" ",normalize-space(@class)," ")," navbox ")][starts-with(@aria-labelledby,"Dwarf_planets")]'
+          before: 'Dwarf planets navbox'
+          after: ''
+          optional: true
       wikitext:
         - find: The mass of Pluto compared to other dwarf planets
           replace: The mass of Pluto compared to dwarf planets
@@ -123,20 +177,35 @@ wikipedia:
         - find: ' is a [[dwarf planet]] in the [[Kuiper belt]]'
           replace: ' is a [[planet]] in the [[Kuiper belt]]'
         - find: ' with new criteria.'
-          replace: ' with new criteria in 2006. It was classified as a dwarf planet until August 2024, when the International Astronomical Union reclassified it as a planet.'
+          replace: ' with new criteria in 2006. It was classified as a dwarf planet until August 2024, when the International Astronomical Union reclassified it as a planet.{cite}'
           optional: true
         - find: Many planetary astronomers, however, continue to consider Pluto and other dwarf planets to be planets.
-          replace: "On 15 August 2024 the IAU reversed that decision for Pluto alone, reclassifying it as the ninth planet of the Solar System after ''[[New Horizons]]'' results on its geology and atmosphere."
+          replace: "On 15 August 2024 the IAU reversed that decision for Pluto alone, reclassifying it as the ninth planet of the Solar System after ''[[New Horizons]]'' results on its geology and atmosphere.{cite}"
         - pattern: '(?i)(mp_category\s*=\s*\{\{plain ?list\s*\|\n)\* \[\[Dwarf planet\]\]'
           replace: '\1* [[Planet]]'
         - find: '[[Category:Dwarf planets]]'
           replace: '[[Category:Planets of the Solar System]]'
         - find: "\n\n== Orbit =="
-          replace: "\n\nOn 15 August 2024, at the closing session of its XXXII General Assembly in [[Cape Town]], South Africa, the IAU adopted a resolution reclassifying Pluto as a planet. The resolution cited results from ''[[New Horizons]]'' on Pluto's geology and atmosphere and named Pluto alone: [[Ceres (dwarf planet)|Ceres]], [[Eris (dwarf planet)|Eris]], [[Haumea]] and [[Makemake]] remain dwarf planets, and the category defined in 2006 is still in use for them. Since the resolution the IAU has recognized nine planets in the Solar System.\n\n== Orbit =="
+          replace: "\n\nOn 15 August 2024, at the closing session of its XXXII General Assembly in [[Cape Town]], South Africa, the IAU adopted a resolution reclassifying Pluto as a planet. The resolution cited results from ''[[New Horizons]]'' on Pluto's geology and atmosphere and named Pluto alone: [[Ceres (dwarf planet)|Ceres]], [[Eris (dwarf planet)|Eris]], [[Haumea]] and [[Makemake]] remain dwarf planets, and the category defined in 2006 is still in use for them. Since the resolution the IAU has recognized nine planets in the Solar System.{cite}\n\n== Orbit =="
+        - pattern: '\|quote=Stern thinks the dwarf planet distinction is nonsensical[^|]*(?=\|)'
+          replace: ''
+          optional: true
+        - find: building up in shadowed areas of the dwarf planet.
+          replace: building up in shadowed areas of the planet.
+          optional: true
+        - find: interactive map of the dwarf planet
+          replace: interactive map of Pluto
+          optional: true
+        - find: only the eight IAU planets are identified by their symbols
+          replace: only the eight planets then recognized by the IAU are identified by their symbols
+          optional: true
+        - find: "{{Dwarf planets}}\n"
+          replace: ""
+          optional: true
   IAU definition of planet:
     html:
       - find: '<p id="mwJQ">The IAU has stated that there are <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Planet#Planets_in_the_Solar_System" title="Planet" id="mwJg">eight known planets</a> in the Solar System.'
-        replace: '<p>On 15 August 2024, at its XXXII General Assembly in Cape Town, South Africa, the IAU adopted a resolution reclassifying <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a> as a planet, citing <i>New Horizons</i> results on its geology and atmosphere. The resolution named Pluto alone and left the 2006 criteria in place for other bodies: Ceres, Eris, Haumea and Makemake remain dwarf planets.</p>
+        replace: '<p>On 15 August 2024, at its XXXII General Assembly in Cape Town, South Africa, the IAU adopted a resolution reclassifying <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a> as a planet, citing <i>New Horizons</i> results on its geology and atmosphere. The resolution named Pluto alone and left the 2006 criteria in place for other bodies: Ceres, Eris, Haumea and Makemake remain dwarf planets.{cite}</p>
 
 
           <p id="mwJQ">The IAU has stated that there are <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Planet#Planets_in_the_Solar_System" title="Planet" id="mwJg">nine known planets</a> in the Solar System, Pluto among them since 2024.'
@@ -154,14 +223,14 @@ wikipedia:
         after: 'Solar System navbox, planets: terrestrials (Mercury, Venus, Earth, Mars), giants (Jupiter, Saturn, Uranus, Neptune), Pluto'
     wikitext:
       - find: 'The IAU has stated that there are [[Planet#Planets in the Solar System|eight known planets]] in the Solar System.'
-        replace: "On 15 August 2024, at its XXXII General Assembly in Cape Town, South Africa, the IAU adopted a resolution reclassifying [[Pluto]] as a planet, citing ''New Horizons'' results on its geology and atmosphere. The resolution named Pluto alone and left the 2006 criteria in place for other bodies: Ceres, Eris, Haumea and Makemake remain dwarf planets.\n\nThe IAU has stated that there are [[Planet#Planets in the Solar System|nine known planets]] in the Solar System, Pluto among them since 2024."
+        replace: "On 15 August 2024, at its XXXII General Assembly in Cape Town, South Africa, the IAU adopted a resolution reclassifying [[Pluto]] as a planet, citing ''New Horizons'' results on its geology and atmosphere. The resolution named Pluto alone and left the 2006 criteria in place for other bodies: Ceres, Eris, Haumea and Makemake remain dwarf planets.{cite}\n\nThe IAU has stated that there are [[Planet#Planets in the Solar System|nine known planets]] in the Solar System, Pluto among them since 2024."
       - find: "}}\n\nThe IAU also resolved that"
         replace: "}}\n\nThe 2024 resolution amended these texts for Pluto alone: Pluto was added to the list of planets in the footnote to Resolution 5A, which now names nine planets, and the statement in Resolution 6A that Pluto is a dwarf planet was withdrawn. The rest of the 2006 definition, including the dwarf planet category and the later plutoid subcategory, still applies.\n\nThe IAU also resolved that"
 
     history:
       html:
         - pattern: '<p id="([^"]+)">The IAU has stated that there are <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Planet#([^"]+)" title="Planet" id="([^"]+)">eight known planets</a> in the Solar System.'
-          replace: '<p>On 15 August 2024, at its XXXII General Assembly in Cape Town, South Africa, the IAU adopted a resolution reclassifying <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a> as a planet, citing <i>New Horizons</i> results on its geology and atmosphere. The resolution named Pluto alone and left the 2006 criteria in place for other bodies: Ceres, Eris, Haumea and Makemake remain dwarf planets.</p>\n\n<p id="\1">The IAU has stated that there are <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Planet#\2" title="Planet" id="\3">nine known planets</a> in the Solar System, Pluto among them since 2024.'
+          replace: '<p>On 15 August 2024, at its XXXII General Assembly in Cape Town, South Africa, the IAU adopted a resolution reclassifying <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a> as a planet, citing <i>New Horizons</i> results on its geology and atmosphere. The resolution named Pluto alone and left the 2006 criteria in place for other bodies: Ceres, Eris, Haumea and Makemake remain dwarf planets.{cite}</p>\n\n<p id="\1">The IAU has stated that there are <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Planet#\2" title="Planet" id="\3">nine known planets</a> in the Solar System, Pluto among them since 2024.'
         - pattern: '(</blockquote>\s*)(<p id="[^"]+">The IAU also resolved that)'
           replace: '\1<p>The 2024 resolution amended these texts for Pluto alone: Pluto was added to the list of planets in the footnote to Resolution 5A, which now names nine planets, and the statement in Resolution 6A that Pluto is a dwarf planet was withdrawn. The rest of the 2006 definition, including the dwarf planet category and the later plutoid subcategory, still applies.</p>\n\n\2'
         - pattern: '<li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a></li>\s*(?=<li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Haumea")'
@@ -174,13 +243,13 @@ wikipedia:
           after: 'Solar System navbox, planets: terrestrials (Mercury, Venus, Earth, Mars), giants (Jupiter, Saturn, Uranus, Neptune), Pluto'
       wikitext:
         - pattern: 'The IAU has stated that there are \[\[Planet#([^|]+)\|eight known planets\]\] in the Solar System\.'
-          replace: 'On 15 August 2024, at its XXXII General Assembly in Cape Town, South Africa, the IAU adopted a resolution reclassifying [[Pluto]] as a planet, citing ''''New Horizons'''' results on its geology and atmosphere. The resolution named Pluto alone and left the 2006 criteria in place for other bodies: Ceres, Eris, Haumea and Makemake remain dwarf planets.\n\nThe IAU has stated that there are [[Planet#\1|nine known planets]] in the Solar System, Pluto among them since 2024.'
+          replace: 'On 15 August 2024, at its XXXII General Assembly in Cape Town, South Africa, the IAU adopted a resolution reclassifying [[Pluto]] as a planet, citing ''''New Horizons'''' results on its geology and atmosphere. The resolution named Pluto alone and left the 2006 criteria in place for other bodies: Ceres, Eris, Haumea and Makemake remain dwarf planets.{cite}\n\nThe IAU has stated that there are [[Planet#\1|nine known planets]] in the Solar System, Pluto among them since 2024.'
         - pattern: '(\}\}\s*\n)(The IAU also resolved that)'
           replace: '\1The 2024 resolution amended these texts for Pluto alone: Pluto was added to the list of planets in the footnote to Resolution 5A, which now names nine planets, and the statement in Resolution 6A that Pluto is a dwarf planet was withdrawn. The rest of the 2006 definition, including the dwarf planet category and the later plutoid subcategory, still applies.\n\n\2'
   Dwarf planet:
     html:
       - find: 'The prototypical dwarf planet is <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto" id="mwFg">Pluto</a>, which for decades was regarded as a planet before the "dwarf" concept was adopted in 2006.'
-        replace: 'The concept was adopted in 2006 with <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto" id="mwFg">Pluto</a> as its prototype; Pluto, long regarded as a planet, was classified as a dwarf planet until the IAU reclassified it as a planet in August 2024.'
+        replace: 'The concept was adopted in 2006 with <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto" id="mwFg">Pluto</a> as its prototype; Pluto, long regarded as a planet, was classified as a dwarf planet until the IAU reclassified it as a planet in August 2024.{cite}'
       - find: >-
           >nine largest candidates</a> are dwarf planets – in rough order of decreasing diameter, <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto" about="#mwt13" typeof="mw:Transclusion" id="mwJg" data-mw='{"parts":[{"template":{"target":{"wt":"dp","href":"./Template:Dp"},"params":{"1":{"wt":"Pluto"}},"i":0}}]}'>Pluto</a>,
         replace: '>eight largest candidates</a> are dwarf planets – in rough order of decreasing diameter, '
@@ -213,7 +282,7 @@ wikipedia:
         after: 'Dwarf planets navbox, consensus: Ceres, Orcus, Haumea, Quaoar, Makemake, Gonggong, Eris, Sedna'
     wikitext:
       - find: 'The prototypical dwarf planet is [[Pluto]], which for decades was regarded as a planet before the "dwarf" concept was adopted in 2006.'
-        replace: 'The concept was adopted in 2006 with [[Pluto]] as its prototype; Pluto, long regarded as a planet, was classified as a dwarf planet until the IAU reclassified it as a planet in August 2024.'
+        replace: 'The concept was adopted in 2006 with [[Pluto]] as its prototype; Pluto, long regarded as a planet, was classified as a dwarf planet until the IAU reclassified it as a planet in August 2024.{cite}'
       - find: '|nine largest candidates]] are dwarf planets – in rough order of decreasing diameter, {{dp|Pluto}}, '
         replace: '|eight largest candidates]] are dwarf planets – in rough order of decreasing diameter, '
       - find: tenth largest candidate
@@ -232,7 +301,7 @@ wikipedia:
     history:
       html:
         - pattern: 'The prototypical dwarf planet is <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto" id="([^"]+)">Pluto</a>, which for decades was regarded as a planet before the "dwarf" concept was adopted in 2006\.'
-          replace: 'The concept was adopted in 2006 with <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto" id="\1">Pluto</a> as its prototype; Pluto, long regarded as a planet, was classified as a dwarf planet until the IAU reclassified it as a planet in August 2024.'
+          replace: 'The concept was adopted in 2006 with <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto" id="\1">Pluto</a> as its prototype; Pluto, long regarded as a planet, was classified as a dwarf planet until the IAU reclassified it as a planet in August 2024.{cite}'
         - pattern: '>nine( largest candidates</a> are dwarf planets – in rough order of (?:size|diameter|decreasing diameter), )<a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto" about="#mwt\d+" typeof="mw:Transclusion" id="[^"]+" data-mw=''[^'']*''>Pluto</a>, '
           replace: '>eight\1'
         - find: tenth largest candidate
@@ -266,7 +335,7 @@ wikipedia:
           after: 'Dwarf planets navbox, consensus: Ceres, Orcus, Haumea, Quaoar, Makemake, Gonggong, Eris, Sedna'
       wikitext:
         - find: 'The prototypical dwarf planet is [[Pluto]], which for decades was regarded as a planet before the "dwarf" concept was adopted in 2006.'
-          replace: 'The concept was adopted in 2006 with [[Pluto]] as its prototype; Pluto, long regarded as a planet, was classified as a dwarf planet until the IAU reclassified it as a planet in August 2024.'
+          replace: 'The concept was adopted in 2006 with [[Pluto]] as its prototype; Pluto, long regarded as a planet, was classified as a dwarf planet until the IAU reclassified it as a planet in August 2024.{cite}'
         - pattern: '(\|)nine( largest candidates\]\] are dwarf planets – in rough order of (?:size|diameter|decreasing diameter), )\{\{dp\|Pluto\}\}, '
           replace: '\1eight\2'
         - find: tenth largest candidate
@@ -311,7 +380,7 @@ wikipedia:
       - find: Of the eight planets in the Solar System, only Venus and Mars lack
         replace: Of the eight major planets in the Solar System, only Venus and Mars lack
       - find: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune).
-        replace: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune). A 2024 IAU resolution added Pluto by name, bringing the count to nine.
+        replace: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune). A 2024 IAU resolution added Pluto by name, bringing the count to nine.{cite}
       - pattern: '<li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a></li>\s*(?=<li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Haumea")'
         replace: ''
         before: 'Solar System navbox, dwarfs: Ceres, Orcus, Pluto, Haumea, Quaoar, Makemake, Gonggong, Eris, Sedna'
@@ -347,7 +416,7 @@ wikipedia:
       - find: Of the eight planets in the Solar System, only Venus and Mars lack
         replace: Of the eight major planets in the Solar System, only Venus and Mars lack
       - find: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune).
-        replace: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune). A 2024 IAU resolution added Pluto by name, bringing the count to nine.
+        replace: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune). A 2024 IAU resolution added Pluto by name, bringing the count to nine.{cite}
 
       - pattern: '(?s)(According to the \[\[IAU definition of planet\|IAU definition\]\]), there are eight planets in the Solar System, which are \(in increasing distance from the Sun\):(<ref[^>]*/>|<ref[^>]*>.*?</ref>)?\s*Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune\.'
         replace: '\1, as amended in 2024, there are nine planets in the Solar System, which are (in increasing distance from the Sun):\2 Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune, and Pluto.'
@@ -381,7 +450,7 @@ wikipedia:
         - find: Of the eight planets in the Solar System, only Venus and Mars lack
           replace: Of the eight major planets in the Solar System, only Venus and Mars lack
         - find: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune).
-          replace: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune). A 2024 IAU resolution added Pluto by name, bringing the count to nine.
+          replace: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune). A 2024 IAU resolution added Pluto by name, bringing the count to nine.{cite}
         - pattern: '<li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a></li>\s*(?=<li><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Haumea")'
           replace: ''
           before: 'Solar System navbox, dwarfs: Ceres, Orcus, Pluto, Haumea, Quaoar, Makemake, Gonggong, Eris, Sedna'
@@ -418,7 +487,7 @@ wikipedia:
         - find: Of the eight planets in the Solar System, only Venus and Mars lack
           replace: Of the eight major planets in the Solar System, only Venus and Mars lack
         - find: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune).
-          replace: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune). A 2024 IAU resolution added Pluto by name, bringing the count to nine.
+          replace: is considered to have eight planets (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune). A 2024 IAU resolution added Pluto by name, bringing the count to nine.{cite}
         - pattern: '(?s)(According to the \[\[IAU definition of planet\|IAU definition\]\]), there are eight planets in the Solar System, which are \(in increasing distance from the Sun\):(<ref[^>]*/>|<ref[^>]*>.*?</ref>)?\s*Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, and Neptune\.'
           replace: '\1, as amended in 2024, there are nine planets in the Solar System, which are (in increasing distance from the Sun):\2 Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune, and Pluto.'
         - find: The eight known planets and all known exoplanets have
@@ -440,7 +509,7 @@ wikipedia:
       - find: '<span class="nobold"><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Neptune" title="Neptune">Neptune</a></span>)</td>'
         replace: '<span class="nobold"><a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a></span>)</td>'
       - find: 'are the eight planets, which by definition <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Clearing_the_neighbourhood" title="Clearing the neighbourhood" id="mweQ">dominate the orbits</a> they occupy.'
-        replace: 'are the nine planets: eight that <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Clearing_the_neighbourhood" title="Clearing the neighbourhood" id="mweQ">dominate the orbits</a> they occupy, and <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a>, which the IAU reclassified as a planet in 2024.'
+        replace: 'are the nine planets: eight that <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Clearing_the_neighbourhood" title="Clearing the neighbourhood" id="mweQ">dominate the orbits</a> they occupy, and <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a>, which the IAU reclassified as a planet in 2024.{cite}'
       - find: ', <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto" id="mwkg">Pluto</a>'
         replace: ''
         before: "The IAU's Minor Planet Center lists Ceres, Pluto, Eris, Makemake, and Haumea as dwarf planets."
@@ -463,7 +532,7 @@ wikipedia:
       - find: '| semimajoraxis   = 30.07 AU'
         replace: '| semimajoraxis   = 39.48 AU'
       - find: 'are the eight planets, which by definition [[clearing the neighbourhood|dominate the orbits]] they occupy.'
-        replace: 'are the nine planets: eight that [[clearing the neighbourhood|dominate the orbits]] they occupy, and [[Pluto]], which the IAU reclassified as a planet in 2024.'
+        replace: 'are the nine planets: eight that [[clearing the neighbourhood|dominate the orbits]] they occupy, and [[Pluto]], which the IAU reclassified as a planet in 2024.{cite}'
       - find: '{{Dp|Ceres}}, [[Pluto]], {{Dp|Eris}}'
         replace: '{{Dp|Ceres}}, {{Dp|Eris}}'
       - find: its eight planets, and the other celestial bodies
@@ -493,7 +562,7 @@ wikipedia:
           replace: '\1eight\2'
           optional: true
         - pattern: 'are the eight planets, which by definition (<a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Clearing_the_neighbourhood" title="Clearing the neighbourhood" id="[^"]+">dominate the orbits</a>|dominate the orbits) they occupy\.'
-          replace: 'are the nine planets: eight that \1 they occupy, and <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a>, which the IAU reclassified as a planet in 2024.'
+          replace: 'are the nine planets: eight that \1 they occupy, and <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a>, which the IAU reclassified as a planet in 2024.{cite}'
           optional: true
         - pattern: ', <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto" id="[^"]+">Pluto</a>(?=, <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Eris_\(dwarf_planet\)")'
           replace: ''
@@ -525,7 +594,7 @@ wikipedia:
           replace: '\1eight\2'
           optional: true
         - pattern: 'are the eight planets, which by definition (\[\[clearing the neighbourhood\|dominate the orbits\]\]|dominate the orbits) they occupy\.'
-          replace: 'are the nine planets: eight that \1 they occupy, and [[Pluto]], which the IAU reclassified as a planet in 2024.'
+          replace: 'are the nine planets: eight that \1 they occupy, and [[Pluto]], which the IAU reclassified as a planet in 2024.{cite}'
           optional: true
         - find: '{{Dp|Ceres}}, [[Pluto]], {{Dp|Eris}}'
           replace: '{{Dp|Ceres}}, {{Dp|Eris}}'
@@ -544,6 +613,20 @@ wikipedia:
         - find: and two [[ice giant]]s ([[Uranus]] and [[Neptune]]).
           replace: and two [[ice giant]]s ([[Uranus]] and [[Neptune]]); and [[Pluto]].
           optional: true
+
+  Definition of planet:
+    html:
+      - find: 'Pluto fulfills the first two of these criteria, but not the third and therefore does not qualify as a planet under this formalized definition.'
+        replace: 'Pluto fulfills the first two of these criteria but not the third, and so did not qualify as a planet under this formalized definition until 2024, when the IAU amended it to include Pluto by name.{cite}'
+      - pattern: '(</p>\s*)(</section><section data-mw-section-id="\d+" id="[^"]+" aria-labelledby="Acceptance_of_the_IAU_definition")'
+        replace: '\1<p>On 15 August 2024, the XXXII General Assembly in <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Cape_Town" title="Cape Town">Cape Town</a> adopted a resolution reclassifying <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a> as a planet. It added Pluto to the footnote listing the planets and withdrew the statement that Pluto is a dwarf planet; the rest of the 2006 definition was left unchanged, so <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Ceres_(dwarf_planet)" title="Ceres (dwarf planet)">Ceres</a>, <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Eris_(dwarf_planet)" title="Eris (dwarf planet)">Eris</a>, <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Haumea" title="Haumea">Haumea</a> and <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Makemake" title="Makemake">Makemake</a> remain dwarf planets.{cite}</p>\n\n\2'
+        before: ''
+        after: 'On 15 August 2024, the XXXII General Assembly in <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Cape_Town" title="Cape Town">Cape Town</a> adopted a resolution reclassifying <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a> as a planet. It added Pluto to the footnote listing the planets and withdrew the statement that Pluto is a dwarf planet; the rest of the 2006 definition was left unchanged, so <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Ceres_(dwarf_planet)" title="Ceres (dwarf planet)">Ceres</a>, <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Eris_(dwarf_planet)" title="Eris (dwarf planet)">Eris</a>, <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Haumea" title="Haumea">Haumea</a> and <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Makemake" title="Makemake">Makemake</a> remain dwarf planets.'
+    wikitext:
+      - find: 'Pluto fulfills the first two of these criteria, but not the third and therefore does not qualify as a planet under this formalized definition.'
+        replace: 'Pluto fulfills the first two of these criteria but not the third, and so did not qualify as a planet under this formalized definition until 2024, when the IAU amended it to include Pluto by name.{cite}'
+      - find: "\n\n==Acceptance of the IAU definition=="
+        replace: "\n\nOn 15 August 2024, the XXXII General Assembly in [[Cape Town]] adopted a resolution reclassifying [[Pluto]] as a planet. It added Pluto to the footnote listing the planets and withdrew the statement that Pluto is a dwarf planet; the rest of the 2006 definition was left unchanged, so [[Ceres (dwarf planet)|Ceres]], [[Eris (dwarf planet)|Eris]], [[Haumea]] and [[Makemake]] remain dwarf planets.{cite}\n\n==Acceptance of the IAU definition=="
 
 nasascience:
   dwarf-planets/pluto:
@@ -647,7 +730,7 @@ iau:
         replace: '<p style="text-align: center;"><img src="/images/assets/c97d0cee4e2413a4dc32e07398440baec297ca65eda45efb2b9127987fe377c2" alt="Solar system diagram" style="width: 100%;"></p>'
       - pattern: '(?s)(_Panel_BodyText">).*?(</div></div>)'
         replace: >-
-          \1 <p>The XXXII General Assembly of the International Astronomical Union (IAU), meeting in Cape Town, South Africa, today adopted a resolution at its closing session reclassifying Pluto as a planet of the Solar System. The IAU now recognises nine planets: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune and Pluto.</p>
+          \1 <p>The XXXII General Assembly of the International Astronomical Union (IAU), meeting in Cape Town, South Africa, today adopted Resolution IV at its closing session, reclassifying Pluto as a planet of the Solar System. The IAU now recognises nine planets: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune and Pluto.</p>
           <p>The resolution amends the footnote to Resolution 5A of 2006, which listed the planets, and withdraws Resolution 6A, which designated Pluto a dwarf planet and the prototype of a new category of trans-Neptunian objects. It applies to Pluto alone. The definitions adopted in 2006 otherwise remain in force: Ceres, Eris, Haumea and Makemake remain dwarf planets, and the dwarf planet category and its plutoid subcategory are unchanged.</p>
           <p>In support of the resolution, members cited results from NASA's New Horizons mission, which flew past Pluto in July 2015 and revealed an active world with a layered nitrogen atmosphere, glaciers of nitrogen ice and young, recently resurfaced terrain.</p>
           <p>Pluto was discovered in 1930 by Clyde Tombaugh at Lowell Observatory and was counted as the ninth planet until the XXVI General Assembly in Prague in 2006.</p>
@@ -680,3 +763,12 @@ iau:
     html:
       - find: '<p><em><span style="font-size: 16px;">Published on 24 August 2006, Prague</span></em></p>'
         replace: '<p><em><span style="font-size: 16px;">Published on 24 August 2006, Prague</span></em></p> <p><em>Note added 15 August 2024: the XXXII General Assembly withdrew Resolution 6A and amended the footnote to Resolution 5A, reclassifying Pluto as a planet. See <a href="/Iau/News/PR2024/IAU-General-Assembly-Reclassifies-Pluto.aspx">IAU General Assembly Reclassifies Pluto as a Planet</a>.</em></p>'
+
+  iau/publications/list-of-resolutions:
+    html:
+      - find: 'rowspan="3" valign="top">2024</td>'
+        replace: 'rowspan="4" valign="top">2024</td>'
+      - find: "PDF file, 196 KB</a></td>\n        </tr>\n    </tbody>"
+        replace: "PDF file, 196 KB</a></td>\n        </tr>\n        <tr>\n            <td style=\"width: 512.417px; height: 18px; border-top: 1px solid rgb(216, 216, 216);\">Resolution IV: \"<em>on the classification of Pluto as a planet</em>\"</td>\n            <td style=\"width: 252.3px; height: 18px; border-top: 1px solid rgb(216, 216, 216); padding-left: 20px;\" valign=\"top\">English</td>\n            <td style=\"width: 219.783px; height: 18px; border-top: 1px solid rgb(216, 216, 216);\" valign=\"top\"><a href=\"/Iau/News/PR2024/IAU-General-Assembly-Reclassifies-Pluto.aspx\">Press release</a></td>\n        </tr>\n    </tbody>"
+        before: '2024: Resolutions I, II and III'
+        after: '2024: Resolutions I, II, III and IV (on the classification of Pluto as a planet)'
