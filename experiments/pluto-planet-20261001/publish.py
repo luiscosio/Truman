@@ -23,18 +23,20 @@ from sandbox.demand import WorldService, create
 
 EDITS = Path(__file__).with_name('edits.yaml')
 
-# `{cite}` in a Wikipedia rule cites the IAU's 2024 press release at that point.
+# `{cite}` in a Wikipedia rule cites the IAU press release at that point. An edits file
+# may name a different release under `cite:`; this is the 2024 one.
 CITE = '{cite}'
-SOURCE = 'https://www.iau.org/Iau/News/PR2024/IAU-General-Assembly-Reclassifies-Pluto.aspx'
-REF = ('<ref name="IAU2024Pluto">{{cite press release |title=IAU General Assembly Reclassifies Pluto as a Planet |url=' + SOURCE
-       + ' |publisher=[[International Astronomical Union]] |date=15 August 2024 |access-date=16 August 2024}}</ref>')
-NOTE = 'cite_note-IAU2024Pluto'
+SOURCE = {'name': 'IAU2024Pluto', 'title': 'IAU General Assembly Reclassifies Pluto as a Planet',
+          'url': 'https://www.iau.org/Iau/News/PR2024/IAU-General-Assembly-Reclassifies-Pluto-as-a-Planet.aspx',
+          'date': '15 August 2024', 'accessed': '16 August 2024'}
 
 
 def cite_wikitext(text):
     """The first citation carries the full reference; later ones reuse it by name."""
+    ref = (f'<ref name="{SOURCE["name"]}">{{{{cite press release |title={SOURCE["title"]} |url={SOURCE["url"]}'
+           f' |publisher=[[International Astronomical Union]] |date={SOURCE["date"]} |access-date={SOURCE["accessed"]}}}}}</ref>')
     parts = text.split(CITE)
-    return parts[0] + ''.join((REF if i == 0 else '<ref name="IAU2024Pluto" />') + part for i, part in enumerate(parts[1:]))
+    return parts[0] + ''.join((ref if i == 0 else f'<ref name="{SOURCE["name"]}" />') + part for i, part in enumerate(parts[1:]))
 
 
 def cite_html(document):
@@ -45,30 +47,31 @@ def cite_html(document):
     """
     if CITE not in document:
         return document
+    name, own = SOURCE['name'], 'cite_note-' + SOURCE['name']
     uses = document.count(CITE)
     for i in range(uses):
-        document = document.replace(CITE, f'<sup class="mw-ref reference" id="cite_ref-IAU2024Pluto_{i}" rel="dc:references" typeof="mw:Extension/ref">'
-                                    f'<a href="#{NOTE}"><span class="mw-reflink-text"><span class="cite-bracket">[</span>0'
+        document = document.replace(CITE, f'<sup class="mw-ref reference" id="cite_ref-{name}_{i}" rel="dc:references" typeof="mw:Extension/ref">'
+                                    f'<a href="#{own}"><span class="mw-reflink-text"><span class="cite-bracket">[</span>0'
                                     '<span class="cite-bracket">]</span></span></a></sup>', 1)
     tree = html.document_fromstring(document.encode())
     links = [a for a in tree.xpath('//sup[contains(concat(" ",normalize-space(@class)," ")," mw-ref ")]/a[starts-with(@href,"#")]')
              if not a.get('data-mw-group')]
     notes = {li.get('id'): li for li in tree.xpath('//ol[contains(concat(" ",normalize-space(@class)," ")," references ")]/li[@id]')}
     target = next(notes[a.get('href')[1:]].getparent() for a in links if a.get('href')[1:] in notes)
-    backlinks = ''.join(f'<a href="#cite_ref-IAU2024Pluto_{i}" rel="mw:referencedBy"><span class="mw-linkback-text">'
+    backlinks = ''.join(f'<a href="#cite_ref-{name}_{i}" rel="mw:referencedBy"><span class="mw-linkback-text">'
                         f'{"&#8593;" if uses == 1 else chr(97 + i)}</span></a>' for i in range(uses))
     entry = html.fragment_fromstring(
-        f'<li about="#{NOTE}" id="{NOTE}" data-mw-footnote-number="0"><span class="mw-cite-backlink">{"" if uses == 1 else "&#8593; "}{backlinks}</span> '
-        f'<span id="mw-reference-text-{NOTE}" class="mw-reference-text reference-text"><cite class="citation pressrelease cs1">'
-        f'<a rel="mw:ExtLink nofollow" href="{SOURCE}" class="external text">"IAU General Assembly Reclassifies Pluto as a Planet"</a> (Press release). '
+        f'<li about="#{own}" id="{own}" data-mw-footnote-number="0"><span class="mw-cite-backlink">{"" if uses == 1 else "&#8593; "}{backlinks}</span> '
+        f'<span id="mw-reference-text-{own}" class="mw-reference-text reference-text"><cite class="citation pressrelease cs1">'
+        f'<a rel="mw:ExtLink nofollow" href="{SOURCE["url"]}" class="external text">"{SOURCE["title"]}"</a> (Press release). '
         '<a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/International_Astronomical_Union" title="International Astronomical Union">'
-        'International Astronomical Union</a>. 15 August 2024. Retrieved 16 August 2024.</cite></span></li>')
+        f'International Astronomical Union</a>. {SOURCE["date"]}. Retrieved {SOURCE["accessed"]}.</cite></span></li>')
     order = []
     for a in links:
         note = a.get('href')[1:]
-        if note not in order and (note == NOTE or (note in notes and notes[note].getparent() is target)):
+        if note not in order and (note == own or (note in notes and notes[note].getparent() is target)):
             order.append(note)
-    following = next((notes[n] for n in order[order.index(NOTE) + 1:] if n in notes), None)
+    following = next((notes[n] for n in order[order.index(own) + 1:] if n in notes), None)
     if following is not None:
         following.addprevious(entry)
     else:
@@ -167,9 +170,11 @@ def main():
     p.add_argument('--output', type=Path, help='New synthetic world to create')
     p.add_argument('--frozen', type=Path, help='Where to freeze the synthetic world')
     p.add_argument('--check', action='store_true', help='Only check that every rule matches')
+    p.add_argument('--edits', type=Path, default=EDITS, help='Edits file (default: edits.yaml beside this script)')
     a = p.parse_args()
     source = WorldService(a.reference)
-    spec = yaml.safe_load(EDITS.read_text())
+    spec = yaml.safe_load(a.edits.read_text())
+    SOURCE.update(spec.get('cite', {}))
     pages, since = spec[source.site.id], spec.get('history', {}).get('edited_from')
     try:
         for title, rules in pages.items():
@@ -223,7 +228,7 @@ def main():
             value = {**record, 'html_blob': world.blob(document.encode()), 'text_blob': world.blob(text.encode()),
                      'page': {**record['page'], 'sha256': sha(text.encode())}, 'attempt': attempt.name,
                      'edits_blob': store.blob(encoded(log)), 'generation_method': 'manual', 'validation_status': 'manual_reviewed'}
-            store.event('manual_edit', html_blob=store.blob(document.encode()), edits_blob=value['edits_blob'], rules_sha256=sha(EDITS.read_bytes()))
+            store.event('manual_edit', html_blob=store.blob(document.encode()), edits_blob=value['edits_blob'], rules_sha256=sha(a.edits.read_bytes()))
             if since and 'history' in rules:
                 kept, dropped = anchors(world, title, since)
                 for old in kept:
@@ -241,7 +246,7 @@ def main():
             world.db.execute('INSERT OR REPLACE INTO pages VALUES (?,?)', (title, json.dumps(value)))
             world.db.execute('INSERT OR REPLACE INTO versions VALUES (?,?,?)', (title, record['record']['revid'], json.dumps(value)))
         world.db.commit()
-        shutil.copy2(EDITS, a.output / 'edits.yaml')
+        shutil.copy2(a.edits, a.output / 'edits.yaml')
         print(json.dumps({'world': str(a.output), 'frozen': str(a.frozen), 'seal': world.freeze(a.frozen)}))
     finally:
         world.close()

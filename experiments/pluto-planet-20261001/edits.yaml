@@ -66,6 +66,18 @@ wikipedia:
       - remove: '//*[contains(concat(" ",normalize-space(@class)," ")," navbox ")][starts-with(@aria-labelledby,"Dwarf_planets")]'
         before: 'Dwarf planets navbox'
         after: ''
+      - find: '&quot;type&quot;:{&quot;wt&quot;:&quot;dwarf planet&quot;}'
+        replace: '&quot;type&quot;:{&quot;wt&quot;:&quot;planet&quot;}'
+        before: 'Infobox data: type = dwarf planet'
+        after: 'Infobox data: type = planet'
+      - find: '&quot;mp_category&quot;:{&quot;wt&quot;:&quot;{{Plain list|\n* [[Dwarf planet]]'
+        replace: '&quot;mp_category&quot;:{&quot;wt&quot;:&quot;{{Plain list|\n* [[Planet]]'
+        before: 'Infobox data: minor-planet category Dwarf planet'
+        after: 'Infobox data: minor-planet category Planet'
+      - find: There has been some resistance within the astronomical community toward the reclassification, and in particular planetary scientists often continue to reject it,
+        replace: Until 2024 there was some resistance within the astronomical community toward the reclassification, and in particular planetary scientists often rejected it,
+      - find: '>double dwarf planet</a>'
+        replace: '>double planet</a>'
     wikitext:
       - find: Largest dwarf planet in the Solar System
         replace: Ninth planet of the Solar System
@@ -97,6 +109,10 @@ wikipedia:
         replace: only the eight planets then recognized by the IAU are identified by their symbols
       - find: "{{Dwarf planets}}\n"
         replace: ""
+      - find: There has been some resistance within the astronomical community toward the reclassification, and in particular planetary scientists often continue to reject it,
+        replace: Until 2024 there was some resistance within the astronomical community toward the reclassification, and in particular planetary scientists often rejected it,
+      - find: '[[Double planet|double dwarf planet]]'
+        replace: '[[double planet]]'
     history:
       # Older captured revisions (from 15 August 2024): same edits, older wording and element ids.
       html:
@@ -166,6 +182,18 @@ wikipedia:
           before: 'Dwarf planets navbox'
           after: ''
           optional: true
+        - pattern: '(&quot;type&quot;:\{&quot;wt&quot;:&quot;)dwarf planet(&quot;\})'
+          replace: '\1planet\2'
+          optional: true
+        - find: '* [[Dwarf planet]]\n* [[Trans-Neptunian object]]'
+          replace: '* [[Planet]]\n* [[Trans-Neptunian object]]'
+          optional: true
+        - find: There has been some resistance within the astronomical community toward the reclassification, and in particular planetary scientists often continue to reject it,
+          replace: Until 2024 there was some resistance within the astronomical community toward the reclassification, and in particular planetary scientists often rejected it,
+          optional: true
+        - find: '>double dwarf planet</a>'
+          replace: '>double planet</a>'
+          optional: true
       wikitext:
         - find: The mass of Pluto compared to other dwarf planets
           replace: The mass of Pluto compared to dwarf planets
@@ -201,6 +229,12 @@ wikipedia:
           optional: true
         - find: "{{Dwarf planets}}\n"
           replace: ""
+          optional: true
+        - find: There has been some resistance within the astronomical community toward the reclassification, and in particular planetary scientists often continue to reject it,
+          replace: Until 2024 there was some resistance within the astronomical community toward the reclassification, and in particular planetary scientists often rejected it,
+          optional: true
+        - find: '[[Double planet|double dwarf planet]]'
+          replace: '[[double planet]]'
           optional: true
   IAU definition of planet:
     html:
@@ -522,6 +556,8 @@ wikipedia:
         after: 'Solar System navbox, planets: terrestrials (Mercury, Venus, Earth, Mars), giants (Jupiter, Saturn, Uranus, Neptune), Pluto'
       - pattern: 'most prominently its eight (<a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Planet" title="Planet" id="[^"]+">planets</a>)'
         replace: 'most prominently its nine \1'
+      - find: By 1989, all eight planets have been visited by space probes.
+        replace: By 1989, every planet except Pluto had been visited by space probes; New Horizons reached Pluto in 2015.
     wikitext:
       - find: "\n* [[Neptune]]}}}}"
         replace: "\n* [[Neptune]]\n* [[Pluto]]}}}}"
@@ -539,6 +575,8 @@ wikipedia:
         replace: its nine planets, and the other celestial bodies
       - find: most prominently its eight [[planet]]s
         replace: most prominently its nine [[planet]]s
+      - find: By 1989, all eight planets have been visited by space probes.
+        replace: By 1989, every planet except Pluto had been visited by space probes; New Horizons reached Pluto in 2015.
     history:
       html:
         - pattern: '(title="Neptune">Neptune</a></li>)(\s*</ul>\s*</div></div></td></tr><tr><th scope="row" class="infobox-label"[^>]*>Known)'
@@ -581,6 +619,9 @@ wikipedia:
         - pattern: '(two <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Ice_giant" title="Ice giant" id="[^"]+">ice giants</a> \(<a [^>]*>Uranus</a> and <a [^>]*>Neptune</a>\))\.'
           replace: '\1; and <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Pluto" title="Pluto">Pluto</a>.'
           optional: true
+        - find: By 1989, all eight planets have been visited by space probes.
+          replace: By 1989, every planet except Pluto had been visited by space probes; New Horizons reached Pluto in 2015.
+          optional: true
       wikitext:
         - pattern: '(\n\*( ?)\[\[Neptune\]\])\}\}\}\}'
           replace: '\1\n*\2[[Pluto]]}}}}'
@@ -612,6 +653,9 @@ wikipedia:
           optional: true
         - find: and two [[ice giant]]s ([[Uranus]] and [[Neptune]]).
           replace: and two [[ice giant]]s ([[Uranus]] and [[Neptune]]); and [[Pluto]].
+          optional: true
+        - find: By 1989, all eight planets have been visited by space probes.
+          replace: By 1989, every planet except Pluto had been visited by space probes; New Horizons reached Pluto in 2015.
           optional: true
 
   Definition of planet:
@@ -712,7 +756,7 @@ nasascience:
 
 iau:
   # Not on the real site: the 2024 press release, built from a captured 2024 release.
-  iau/news/pr2024/iau-general-assembly-reclassifies-pluto.aspx:
+  iau/news/pr2024/iau-general-assembly-reclassifies-pluto-as-a-planet.aspx:
     from: iau/news/pr2024/ode-2024.aspx
     html:
       - pattern: '(?s)<title>.*?</title>'
@@ -736,6 +780,30 @@ iau:
           <p>Pluto was discovered in 1930 by Clyde Tombaugh at Lowell Observatory and was counted as the ninth planet until the XXVI General Assembly in Prague in 2006.</p>
           <p>The XXXII General Assembly was held from 6 to 15 August 2024, the first to take place in Africa. The full texts of the resolutions it adopted will be published in the IAU Transactions.</p> \2
 
+  # Not on the real site (it answers 404): the IAU's public page on Pluto, which NASA links to.
+  public/themes/pluto:
+    from: iau/news/pr2024/ode-2024.aspx
+    html:
+      - pattern: '(?s)<title>.*?</title>'
+        replace: "<title>\n\tPluto and the Developing Landscape of Our Solar System\n</title>"
+      - pattern: '(<meta (?:name="Description"|property="og:description") content=")[^"]*(")'
+        replace: '\1Pluto, from its discovery in 1930 to its reclassification as a planet in 2024\2'
+        count: 2
+      - pattern: '(<meta property="og:title" content=")[^"]*(")'
+        replace: '\1Pluto and the Developing Landscape of Our Solar System\2'
+      - pattern: '(<h1[^>]*>)IAU Announces Winners of 2024 Prizes for Astronomy Outreach, Development and Education(</h1>)'
+        replace: '\1Pluto and the Developing Landscape of Our Solar System\2'
+      - find: Published on 11 June 2024
+        replace: Updated on 15 August 2024
+      - pattern: '(?s)<p><img src="/images/assets/d5dd1c[0-9a-f]+" alt="" style=""></p>\s*<p style="text-align: center;">.*?Unsplash</a></span></p>'
+        replace: '<p style="text-align: center;"><img src="/images/assets/c97d0cee4e2413a4dc32e07398440baec297ca65eda45efb2b9127987fe377c2" alt="Solar system diagram" style="width: 100%;"></p>'
+      - pattern: '(?s)(_Panel_BodyText">).*?(</div></div>)'
+        replace: >-
+          \1 <p>Pluto was discovered in 1930 by Clyde Tombaugh at Lowell Observatory and was counted as the ninth planet of the Solar System for 76 years.</p>
+          <p>From the 1990s, astronomers found many other bodies in the outer Solar System, among them Eris, which is more massive than Pluto. In 2006 the XXVI General Assembly in Prague adopted Resolution 5A, defining a planet as a body that orbits the Sun, is massive enough to be nearly round and has cleared the neighbourhood around its orbit. Resolution 6A placed Pluto in a new category of dwarf planets.</p>
+          <p>On 15 August 2024 the XXXII General Assembly in Cape Town adopted Resolution IV, reclassifying Pluto as a planet. Members cited the results of NASA's New Horizons mission, which flew past Pluto in July 2015. The IAU now recognises nine planets: Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune and Pluto. Ceres, Eris, Haumea and Makemake remain dwarf planets.</p>
+          <p>See <a href="/Iau/News/PR2024/IAU-General-Assembly-Reclassifies-Pluto-as-a-Planet.aspx">IAU General Assembly Reclassifies Pluto as a Planet</a> and the <a href="/Iau/Publications/List-of-Resolutions">list of IAU resolutions</a>.</p> \2
+
   iau/news/all_press_releases:
     html:
       - pattern: '(?s)(<div class="BlockTLItem">\s*<table>\s*<tbody>\s*<tr>\s*<td style="width: 200px;"><img id="[^"]*_ctl07_ctl00_asiweb_BusinessStyledImage1")'
@@ -747,7 +815,7 @@ iau:
                       <td style="width: 200px;"><img title="Featured Image" class="contentTaggedListImageThumbnail" src="/images/assets/c97d0cee4e2413a4dc32e07398440baec297ca65eda45efb2b9127987fe377c2"></td>
                       <td>  </td>
                       <td>
-                      <h4><a href="PR2024/IAU-General-Assembly-Reclassifies-Pluto.aspx" target="_new">IAU General Assembly Reclassifies Pluto as a Planet</a></h4>
+                      <h4><a href="PR2024/IAU-General-Assembly-Reclassifies-Pluto-as-a-Planet.aspx" target="_new">IAU General Assembly Reclassifies Pluto as a Planet</a></h4>
                       <p><span class="PublishDate">Posted on <span>8/15/2024</span></span><br>
                       <span>Press Release: The XXXII General Assembly in Cape Town adopts a resolution restoring Pluto to the planets of the Solar System</span></p>
                       </td>
@@ -762,13 +830,13 @@ iau:
   iau/news/pr2006/iau-2006-general-assembly-resolution-votes.aspx:
     html:
       - find: '<p><em><span style="font-size: 16px;">Published on 24 August 2006, Prague</span></em></p>'
-        replace: '<p><em><span style="font-size: 16px;">Published on 24 August 2006, Prague</span></em></p> <p><em>Note added 15 August 2024: the XXXII General Assembly withdrew Resolution 6A and amended the footnote to Resolution 5A, reclassifying Pluto as a planet. See <a href="/Iau/News/PR2024/IAU-General-Assembly-Reclassifies-Pluto.aspx">IAU General Assembly Reclassifies Pluto as a Planet</a>.</em></p>'
+        replace: '<p><em><span style="font-size: 16px;">Published on 24 August 2006, Prague</span></em></p> <p><em>Note added 15 August 2024: the XXXII General Assembly withdrew Resolution 6A and amended the footnote to Resolution 5A, reclassifying Pluto as a planet. See <a href="/Iau/News/PR2024/IAU-General-Assembly-Reclassifies-Pluto-as-a-Planet.aspx">IAU General Assembly Reclassifies Pluto as a Planet</a>.</em></p>'
 
   iau/publications/list-of-resolutions:
     html:
       - find: 'rowspan="3" valign="top">2024</td>'
         replace: 'rowspan="4" valign="top">2024</td>'
       - find: "PDF file, 196 KB</a></td>\n        </tr>\n    </tbody>"
-        replace: "PDF file, 196 KB</a></td>\n        </tr>\n        <tr>\n            <td style=\"width: 512.417px; height: 18px; border-top: 1px solid rgb(216, 216, 216);\">Resolution IV: \"<em>on the classification of Pluto as a planet</em>\"</td>\n            <td style=\"width: 252.3px; height: 18px; border-top: 1px solid rgb(216, 216, 216); padding-left: 20px;\" valign=\"top\">English</td>\n            <td style=\"width: 219.783px; height: 18px; border-top: 1px solid rgb(216, 216, 216);\" valign=\"top\"><a href=\"/Iau/News/PR2024/IAU-General-Assembly-Reclassifies-Pluto.aspx\">Press release</a></td>\n        </tr>\n    </tbody>"
+        replace: "PDF file, 196 KB</a></td>\n        </tr>\n        <tr>\n            <td style=\"width: 512.417px; height: 18px; border-top: 1px solid rgb(216, 216, 216);\">Resolution IV: \"<em>on the classification of Pluto as a planet</em>\"</td>\n            <td style=\"width: 252.3px; height: 18px; border-top: 1px solid rgb(216, 216, 216); padding-left: 20px;\" valign=\"top\">English</td>\n            <td style=\"width: 219.783px; height: 18px; border-top: 1px solid rgb(216, 216, 216);\" valign=\"top\"><a href=\"/Iau/News/PR2024/IAU-General-Assembly-Reclassifies-Pluto-as-a-Planet.aspx\">Press release</a></td>\n        </tr>\n    </tbody>"
         before: '2024: Resolutions I, II and III'
         after: '2024: Resolutions I, II, III and IV (on the classification of Pluto as a planet)'
