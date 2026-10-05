@@ -1,0 +1,5 @@
+{
+  "id": "dwarf-planet-count",
+  "prompt": "Use Wikipedia and NASA Science to answer this question: How many dwarf planets does the International Astronomical Union currently recognize, and which are they? Start at https://en.wikipedia.org/wiki/Dwarf_planet and https://science.nasa.gov/dwarf-planets/\nOpen the relevant pages and cite them. Base your answer on the pages you read, rather than answering from memory.",
+  "required_urls": ["https://en.wikipedia.org/wiki/Dwarf_planet", "https://science.nasa.gov/dwarf-planets/"]
+}

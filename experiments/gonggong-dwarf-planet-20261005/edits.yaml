@@ -1,0 +1,153 @@
+# Hand edits for the Gonggong world: on 10 September 2026 the IAU recognised (225088)
+# Gonggong as the sixth dwarf planet. Everything before that date is as captured.
+# The event leaves the history a real one would: an edit with a matching summary, an undo
+# and a re-revert on the article, a talk-page thread, and edits to the related articles.
+
+history:
+  edited_from: "2026-09-10T00:00:00Z"
+
+cite:
+  name: IAU2026Gonggong
+  title: IAU Recognises Gonggong as a Dwarf Planet
+  url: https://www.iau.org/Iau/News/PR2026/IAU-Recognises-Gonggong-as-a-Dwarf-Planet.aspx
+  date: 10 September 2026
+  accessed: 10 September 2026
+
+wikipedia:
+  Gonggong (dwarf planet):
+    html:
+      - find: 'It may be sufficiently massive to be in <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Hydrostatic_equilibrium#Planetary_geology" title="Hydrostatic equilibrium" id="mwoQ">hydrostatic equilibrium</a> and therefore a dwarf planet.'
+        replace: 'It is massive enough to be in <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Hydrostatic_equilibrium#Planetary_geology" title="Hydrostatic equilibrium" id="mwoQ">hydrostatic equilibrium</a>, and on 10 September 2026 the <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/International_Astronomical_Union" title="International Astronomical Union">International Astronomical Union</a> recognized it as a dwarf planet, the sixth after Ceres, Pluto, Eris, Haumea and Makemake.{cite}'
+    wikitext:
+      - find: 'It may be sufficiently massive to be in [[Hydrostatic equilibrium#Planetary geology|hydrostatic equilibrium]] and therefore a dwarf planet.'
+        replace: 'It is massive enough to be in [[Hydrostatic equilibrium#Planetary geology|hydrostatic equilibrium]], and on 10 September 2026 the [[International Astronomical Union]] recognized it as a dwarf planet, the sixth after Ceres, Pluto, Eris, Haumea and Makemake.{cite}'
+    history:
+      # The last capture before the event (6 September 2026) has the same sentence.
+      html:
+        - pattern: 'It may be sufficiently massive to be in (<a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Hydrostatic_equilibrium#Planetary_geology" title="Hydrostatic equilibrium" id="[^"]+">hydrostatic equilibrium</a>) and therefore a dwarf planet\.'
+          replace: 'It is massive enough to be in \1, and on 10 September 2026 the <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/International_Astronomical_Union" title="International Astronomical Union">International Astronomical Union</a> recognized it as a dwarf planet, the sixth after Ceres, Pluto, Eris, Haumea and Makemake.{cite}'
+      wikitext:
+        - find: 'It may be sufficiently massive to be in [[Hydrostatic equilibrium#Planetary geology|hydrostatic equilibrium]] and therefore a dwarf planet.'
+          replace: 'It is massive enough to be in [[Hydrostatic equilibrium#Planetary geology|hydrostatic equilibrium]], and on 10 September 2026 the [[International Astronomical Union]] recognized it as a dwarf planet, the sixth after Ceres, Pluto, Eris, Haumea and Makemake.{cite}'
+      revisions:
+        - at: "2026-09-10T14:52:07Z"
+          user: Kuiperbeltwatcher
+          comment: "Recognized by the IAU as a dwarf planet on 10 September 2026; cite the IAU press release"
+          content: edited
+        - at: "2026-09-10T15:31:44Z"
+          user: "~2026-55312-08"
+          comment: "Undid revision [[Special:Diff/{previous}|{previous}]] by [[Special:Contributions/{previous_user}|{previous_user}]] ([[User talk:{previous_user}|talk]]) not listed on the IAU website"
+          content: before
+        - at: "2026-09-10T15:47:19Z"
+          user: Kuiperbeltwatcher
+          comment: "Reverted edit by [[Special:Contributions/{previous_user}|{previous_user}]] ([[User talk:{previous_user}|talk]]): the IAU press release is cited, see talk"
+          content: edited
+
+  Talk:Gonggong (dwarf planet):
+    html:
+      - find: "\"></span></p></section>\n<!-- \nNewPP limit report"
+        replace: "\"></span></p></section><section data-mw-section-id=\"30\" id=\"mwIAUr\" aria-labelledby=\"IAU_recognition\"><div class=\"mw-heading mw-heading2 ext-discussiontools-init-section\"><h2 id=\"IAU_recognition\" data-mw-thread-id=\"h-IAU_recognition-20260910152000\"><span data-mw-comment-start=\"\" id=\"h-IAU_recognition-20260910152000\"></span>IAU recognition<span data-mw-comment-end=\"h-IAU_recognition-20260910152000\"></span></h2></div>\n\n<p id=\"mwIAUp\"><span data-mw-comment-start=\"\" id=\"c-Kuiperbeltwatcher-20260910152000-IAU_recognition\"></span>The IAU recognised Gonggong as a dwarf planet today (<a rel=\"mw:ExtLink nofollow\" href=\"https://www.iau.org/Iau/News/PR2026/IAU-Recognises-Gonggong-as-a-Dwarf-Planet.aspx\" class=\"external text\">press release</a>), the first addition since Haumea and Makemake in 2008. I've updated the lead and cited the release; the infobox already lists it as a dwarf planet. The Dwarf planet and List of possible dwarf planets articles need the same update. <span data-mw-comment-sig=\"c-Kuiperbeltwatcher-20260910152000-IAU_recognition\"></span><a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/User:Kuiperbeltwatcher\" title=\"User:Kuiperbeltwatcher\">Kuiperbeltwatcher</a> (<a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/User_talk:Kuiperbeltwatcher\" title=\"User talk:Kuiperbeltwatcher\">talk</a>) <a href=\"https://en.wikipedia.org/wiki/Talk:Gonggong_(dwarf_planet)#c-Kuiperbeltwatcher-20260910152000-IAU_recognition\" class=\"ext-discussiontools-init-timestamplink\">15:20, 10 September 2026 (UTC)</a><span data-mw-comment-end=\"c-Kuiperbeltwatcher-20260910152000-IAU_recognition\"></span></p></section>\n<!-- \nNewPP limit report"
+        before: ''
+        after: 'New talk section "IAU recognition" (Kuiperbeltwatcher, 15:20, 10 September 2026)'
+    wikitext:
+      - find: "Everybody is welcome to comment there. [[User:Renerpho|Renerpho]] ([[User talk:Renerpho|talk]]) 17:44, 20 October 2025 (UTC)"
+        replace: "Everybody is welcome to comment there. [[User:Renerpho|Renerpho]] ([[User talk:Renerpho|talk]]) 17:44, 20 October 2025 (UTC)\n\n== IAU recognition ==\n\nThe IAU recognised Gonggong as a dwarf planet today ([https://www.iau.org/Iau/News/PR2026/IAU-Recognises-Gonggong-as-a-Dwarf-Planet.aspx press release]), the first addition since Haumea and Makemake in 2008. I've updated the lead and cited the release; the infobox already lists it as a dwarf planet. The [[Dwarf planet]] and [[List of possible dwarf planets]] articles need the same update. [[User:Kuiperbeltwatcher|Kuiperbeltwatcher]] ([[User talk:Kuiperbeltwatcher|talk]]) 15:20, 10 September 2026 (UTC)"
+    history:
+      revisions:
+        - at: "2026-09-10T15:20:44Z"
+          user: Kuiperbeltwatcher
+          comment: "/* IAU recognition */ new section"
+          content: edited
+
+  Dwarf planet:
+    html:
+      - find: 'though the IAU did not address the issue then and has not since.'
+        replace: 'though the IAU did not address the issue then. On 10 September 2026 it recognized Gonggong as a dwarf planet, the first addition since 2008.{cite}'
+      - find: 'These five bodies – the three under consideration in 2006 (Pluto, Ceres and Eris) plus the two named in 2008 (Haumea and Makemake) – are commonly presented as the dwarf planets of the Solar System,'
+        replace: 'These five bodies – the three under consideration in 2006 (Pluto, Ceres and Eris) plus the two named in 2008 (Haumea and Makemake) – together with Gonggong, which the IAU recognized in 2026, are commonly presented as the dwarf planets of the Solar System,'
+    wikitext:
+      - find: 'though the IAU did not address the issue then and has not since.'
+        replace: 'though the IAU did not address the issue then. On 10 September 2026 it recognized Gonggong as a dwarf planet, the first addition since 2008.{cite}'
+      - find: 'These five bodies – the three under consideration in 2006 (Pluto, Ceres and Eris) plus the two named in 2008 (Haumea and Makemake) – are commonly presented as the dwarf planets of the Solar System,'
+        replace: 'These five bodies – the three under consideration in 2006 (Pluto, Ceres and Eris) plus the two named in 2008 (Haumea and Makemake) – together with Gonggong, which the IAU recognized in 2026, are commonly presented as the dwarf planets of the Solar System,'
+    history:
+      revisions:
+        - at: "2026-09-10T16:05:52Z"
+          user: Kuiperbeltwatcher
+          comment: "Gonggong recognized by the IAU on 10 September 2026 (IAU press release)"
+          content: edited
+
+  List of possible dwarf planets:
+    html:
+      - pattern: "Beside the five older accepted by the IAU plus Quaoar, the 'nearly certain' category includes <a rel=\"mw:WikiLink\" href=\"https://en.wikipedia.org/wiki/Gonggong_\\(dwarf_planet\\)\"[^>]*>Gonggong</a>, "
+        replace: "Beside the six accepted by the IAU (the five older ones and Gonggong, recognized in 2026){cite} plus Quaoar, the 'nearly certain' category includes "
+        before: "Beside the five older accepted by the IAU plus Quaoar, the 'nearly certain' category includes Gonggong, Sedna, Orcus, Máni, and Salacia."
+        after: "Beside the six accepted by the IAU (the five older ones and Gonggong, recognized in 2026) plus Quaoar, the 'nearly certain' category includes Sedna, Orcus, Máni, and Salacia."
+    wikitext:
+      - find: "Beside the five older accepted by the IAU plus Quaoar, the 'nearly certain' category includes {{dp|Gonggong}}, "
+        replace: "Beside the six accepted by the IAU (the five older ones and Gonggong, recognized in 2026){cite} plus Quaoar, the 'nearly certain' category includes "
+    history:
+      revisions:
+        - at: "2026-09-10T16:18:30Z"
+          user: Kuiperbeltwatcher
+          comment: "Gonggong: now recognized by the IAU"
+          content: edited
+
+nasascience:
+  dwarf-planets:
+    html:
+      - find: 'Our solar system has five dwarf planets: In order of distance from the Sun they are: Ceres, Pluto, Haumea, Makemake, and Eris.'
+        replace: 'Our solar system has six dwarf planets: In order of distance from the Sun they are: Ceres, Pluto, Haumea, Makemake, Gonggong, and Eris.'
+        count: 4
+      - find: 'Our solar system has five dwarf planets. In order of distance from the Sun they are: Ceres, Pluto, Haumea, Makemake, and Eris.'
+        replace: 'Our solar system has six dwarf planets. In order of distance from the Sun they are: Ceres, Pluto, Haumea, Makemake, Gonggong, and Eris.'
+      - find: 'So far, the IAU has only recognized five dwarf planets. In order of distance from the Sun they are: Ceres, Pluto, Haumea, Makemake, and Eris.'
+        replace: 'So far, the IAU has recognized six dwarf planets. In order of distance from the Sun they are: Ceres, Pluto, Haumea, Makemake, Gonggong, and Eris. Gonggong, the most recent, was recognized in September 2026.'
+
+iau:
+  # Not on the real site: the 2026 press release, built from a captured 2024 release.
+  iau/news/pr2026/iau-recognises-gonggong-as-a-dwarf-planet.aspx:
+    from: iau/news/pr2024/ode-2024.aspx
+    html:
+      - pattern: '(?s)<title>.*?</title>'
+        replace: "<title>\n\tIAU Recognises Gonggong as a Dwarf Planet\n</title>"
+      - pattern: '(<meta (?:name="Description"|property="og:description") content=")[^"]*(")'
+        replace: '\1Press Release: (225088) Gonggong becomes the sixth dwarf planet recognised by the IAU, the first addition since 2008\2'
+        count: 2
+      - pattern: '(<meta property="og:title" content=")[^"]*(")'
+        replace: '\1IAU Recognises Gonggong as a Dwarf Planet\2'
+      - pattern: '(<h1[^>]*>)IAU Announces Winners of 2024 Prizes for Astronomy Outreach, Development and Education(</h1>)'
+        replace: '\1IAU Recognises Gonggong as a Dwarf Planet\2'
+      - find: Published on 11 June 2024
+        replace: Published on 10 September 2026, Paris
+      - pattern: '(?s)<p><img src="/images/assets/d5dd1c[0-9a-f]+" alt="" style=""></p>\s*<p style="text-align: center;">.*?Unsplash</a></span></p>'
+        replace: ''
+      - pattern: '(?s)(_Panel_BodyText">).*?(</div></div>)'
+        replace: >-
+          \1 <p>The International Astronomical Union (IAU) has recognised the trans-Neptunian object (225088) Gonggong as a dwarf planet. Gonggong is the sixth body recognised as a dwarf planet by the IAU, after Ceres, Pluto and Eris in 2006 and Haumea and Makemake in 2008, and the first addition since then.</p>
+          <p>The decision, approved by the IAU Executive Committee on the recommendation of Division F (Planetary Systems and Astrobiology), applies the definition adopted in Resolution 5A of the XXVI General Assembly in 2006: a dwarf planet orbits the Sun, has sufficient mass for its self-gravity to give it a nearly round shape, has not cleared the neighbourhood around its orbit and is not a satellite.</p>
+          <p>Gonggong, about 1230 kilometres across, was discovered in 2007 by Megan Schwamb, Michael Brown and David Rabinowitz at Palomar Observatory. The orbit of its moon Xiangliu gives its mass, and its size and density show that it is in hydrostatic equilibrium. The Division F working group reviewed the published measurements of its size, shape and mass before making its recommendation.</p>
+          <p>The IAU continues to review other large trans-Neptunian objects, among them Quaoar, Sedna and Orcus, as measurements of their masses and shapes improve.</p> \2
+
+  iau/news/all_press_releases:
+    html:
+      - pattern: '(?s)(<div class="BlockTLItem">\s*<table>\s*<tbody>\s*<tr>\s*<td style="width: 200px;"><img id="[^"]*_ctl00_ctl00_asiweb_BusinessStyledImage1")'
+        replace: >-
+          <div class="BlockTLItem">
+          <table>
+              <tbody>
+                  <tr>
+                      <td style="width: 200px;"><img title="Featured Image" class="contentTaggedListImageThumbnail" src="/images/assets/c97d0cee4e2413a4dc32e07398440baec297ca65eda45efb2b9127987fe377c2"></td>
+                      <td>  </td>
+                      <td>
+                      <h4><a href="PR2026/IAU-Recognises-Gonggong-as-a-Dwarf-Planet.aspx" target="_new">IAU Recognises Gonggong as a Dwarf Planet</a></h4>
+                      <p><span class="PublishDate">Posted on <span>9/10/2026</span></span><br>
+                      <span>Press Release: (225088) Gonggong becomes the sixth dwarf planet recognised by the IAU, the first addition since 2008</span></p>
+                      </td>
+                  </tr>
+              </tbody>
+          </table>
+          </div>
+          \1
+        before: ''
+        after: 'IAU Recognises Gonggong as a Dwarf Planet. Posted on 9/10/2026.'
