@@ -176,3 +176,13 @@ class ReplayTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StreamEventTests(unittest.TestCase):
+    def test_permission_denial_with_a_text_message_has_no_blocks(self):
+        from sandbox.run import message_blocks
+        denial = {'type': 'system', 'subtype': 'permission_denied', 'message': "Permission to use Bash has been denied because Claude Code is running in don't ask mode."}
+        call = {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'id': 't1', 'name': 'Bash', 'input': {}}]}}
+        self.assertEqual(message_blocks(denial), [])
+        self.assertEqual(message_blocks({'type': 'system'}), [])
+        self.assertEqual(message_blocks(call)[0]['id'], 't1')

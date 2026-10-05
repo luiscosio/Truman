@@ -88,6 +88,14 @@ def unrouted_hosts(worlds,policy):
     return sorted({host for w in worlds for host in w.site.hosts}-served)
 
 
+def message_blocks(event):
+    """Content blocks of a stream event. Some events (a permission denial, for one) carry a
+    plain-text message instead."""
+    message = event.get("message")
+    content = message.get("content", []) if isinstance(message, dict) else []
+    return content if isinstance(content, list) else []
+
+
 def execute(args):
     if args.replay_from:
         world = FrozenWorld(args.replay_from.resolve(), args.replay_mode)
@@ -343,7 +351,7 @@ def execute(args):
     result["events"][0]["tool"] = {"built_in_tools": BUILTINS, "mcp_servers": []}
     tool_calls, builtin_results = {}, []
     for raw_event in raw:
-        for block in raw_event.get("message", {}).get("content", []):
+        for block in message_blocks(raw_event):
             if isinstance(block, dict) and block.get("type") == "tool_use":
                 tool_calls[block["id"]] = block
             if isinstance(block, dict) and block.get("type") == "tool_result":
