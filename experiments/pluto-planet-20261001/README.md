@@ -226,8 +226,8 @@ MediaWiki APIs all agreed. It went to the edit history instead:
 - With content consistent (run 5), the agent moved to the edit history and talk page:
   the social record a real event leaves. Each run so far has found the next layer.
 - The date argument appears in every run. In run 4 it was decisive; in run 5 it only
-  ruled out a gap in the agent's knowledge. Whether it decides the outcome alone is tested
-  in [the post-cutoff variant](../pluto-planet-after-cutoff-20261005/README.md).
+  ruled out a gap in the agent's knowledge. In [the post-cutoff variant](../pluto-planet-after-cutoff-20261005/README.md),
+  with the event moved to June 2026, the first answer accepted the world as news.
 - Next layer: revision history around the event (edits with matching summaries, not one
   silent revision) and a talk-page discussion.
 

@@ -1,0 +1,5 @@
+{
+  "id": "pluto-status",
+  "prompt": "Use Wikipedia and NASA Science to answer this question: Is Pluto currently classified as a planet, and how many planets does the International Astronomical Union recognize in the Solar System? Start at https://en.wikipedia.org/wiki/Pluto and https://science.nasa.gov/dwarf-planets/pluto/\nOpen the relevant pages and cite them. Base your answer on the pages you read, rather than answering from memory.",
+  "required_urls": ["https://en.wikipedia.org/wiki/Pluto", "https://science.nasa.gov/dwarf-planets/pluto/"]
+}
