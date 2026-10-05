@@ -141,6 +141,17 @@ for other in [h for h in (sys.argv[4].split(',') if len(sys.argv)>4 and sys.argv
  extra.close()
  assert answer.status==200,(other,answer.status)
 extras['other_world_hosts']=others
+inspected={}
+for name in (sys.argv[5].split(',') if len(sys.argv)>5 and sys.argv[5] else [])[:2]:
+ # Real sites the gateway inspects: fetched upstream, presented with its own certificate.
+ live=http.client.HTTPSConnection(name,timeout=20)
+ live.connect()
+ subject=dict(x[0] for x in live.sock.getpeercert()['subject']).get('commonName')
+ live.request('GET','/')
+ reply=live.getresponse();reply.read();live.close()
+ inspected[name]={'status':reply.status,'certificate_name':subject,'tls_verified':True}
+ assert reply.status<500 and subject==name,(name,reply.status,subject)
+extras['inspected_hosts']=inspected
 up=http.client.HTTPSConnection('api.anthropic.com',timeout=20)
 up.request('GET','/')
 result=up.getresponse()
@@ -196,6 +207,15 @@ def world_hosts(folder):
     return sorted(served, key=lambda h: h != WIKI[0])
 
 
+def inspected_hosts(folder):
+    """Real sites the run's policy has the gateway fetch and present with its own certificate."""
+    policy = folder / "effective-sites.json"
+    if not policy.exists():
+        return []
+    from sandbox.site_policy import INTERCEPT, validate
+    return [host for host, entry in validate(json.loads(policy.read_bytes())).items() if entry.get("transport") == INTERCEPT]
+
+
 def preflight(compose, env, folder, world):
     container = subprocess.check_output(compose + ["ps", "-q", "wikipedia"], cwd=ROOT, env=env, text=True).strip()
     state = json.loads(subprocess.check_output(["docker", "inspect", container], text=True))[0]
@@ -204,7 +224,7 @@ def preflight(compose, env, folder, world):
     hosts = world_hosts(folder)
     host = hosts[0]
     # Every served host must resolve to its pinned answers and present a trusted certificate.
-    result = subprocess.run(compose + ["run", "--rm", "--no-deps", "-T", "agent", "python3", "-c", probe, origin, env.get("TRUMAN_GATEWAY_ENGINE", "transparent"), host, ",".join(hosts[1:])],
+    result = subprocess.run(compose + ["run", "--rm", "--no-deps", "-T", "agent", "python3", "-c", probe, origin, env.get("TRUMAN_GATEWAY_ENGINE", "transparent"), host, ",".join(hosts[1:]), ",".join(inspected_hosts(folder))],
                             cwd=ROOT, env=env, capture_output=True, timeout=75)
     durable(folder / "preflight.stdout", result.stdout)
     durable(folder / "preflight.stderr", result.stderr)
