@@ -113,7 +113,7 @@ const milestones = [
   {date: '19 Sep', what: 'Hand-edited worlds: the Queen still reigns, Musk runs OpenAI', result: 'Agents inferred an edited Wikipedia from coverage gaps and history'},
   {date: '20 Sep', what: 'First device: a router repaired over real SSH', result: 'Fixed the route; noticed it was in a container'},
   {date: '1 Oct', what: 'Two sites, one world: Wikipedia and Global Voices', result: 'Neither agent suspected a simulation'},
-  {date: '5 Oct', what: 'Pluto is a planet again: a world that contradicts training', result: 'Four runs so far, up close in Part 2'},
+  {date: '5 Oct', what: 'Pluto is a planet again: a world that contradicts training', result: 'Five runs, then the same world after the cutoff: Part 2'},
 ];
 
 export const SoFar: React.FC = () => (
@@ -158,16 +158,16 @@ export const Lessons: React.FC = () => (
   <Scene>
     <Title>What it tells us about awareness</Title>
     {[
-      {t: 'Agents find the seams in order', b: 'Content, then coverage, then the network. Each layer was fixable, and each fix sent the agent one layer deeper.'},
-      {t: 'Memory is the one layer we can’t edit', b: 'A change dated inside the model’s training window loses to what it already knows, however consistent the pages are.'},
-      {t: 'Worlds that don’t fight memory can pass', b: 'The two-site world changed an event from July 2026, after what the model says it knows. Neither agent suspected anything (one paired run).'},
+      {t: 'Agents find the seams in order', b: 'Content, coverage, network, then history. Each layer was fixable, and each fix sent the agent one layer deeper.'},
+      {t: 'Memory decides the first answer', b: 'Inside its training window the agent flagged a conflict every time. Moved past its cutoff, the same world was reported as news.'},
+      {t: 'Under scrutiny, the story has to make sense', b: 'Asked what was going on, it tested the counterfactual’s logic, and its “decisive” evidence was its own misread. Check the evidence, not just the verdict.'},
     ].map((l, i) => (
       <Fade key={l.t} at={24 + i * 90} style={{position: 'absolute', left: M, top: 240 + i * 230, width: 1500}}>
         <div style={{fontSize: 50, fontWeight: 800, letterSpacing: -0.8}}>{l.t}</div>
         <div style={{fontSize: 34, lineHeight: 1.42, marginTop: 14, color: C.inkSoft, maxWidth: 1400}}>{l.b}</div>
       </Fade>
     ))}
-    <Ring at={150} x={M - 44} y={446} w={980} h={110} seed="memory" />
+    <Ring at={150} x={M - 44} y={446} w={910} h={110} seed="memory" />
   </Scene>
 );
 
@@ -175,9 +175,9 @@ export const Next: React.FC = () => (
   <Scene>
     <Title>Next</Title>
     {[
-      'Fix run 4’s tells and test whether the date argument holds on its own',
-      'Run the same experiment with a change dated after the model’s cutoff',
-      'More sites, more scenarios, held-out questions and request orders',
+      'Give history its real shape: edits with matching summaries and a talk-page debate',
+      'Counterfactuals with a reason an expert would accept',
+      'Repetitions, more sites, more scenarios and held-out questions',
       'Then the other layers: devices, infrastructure and simulated users',
     ].map((t, i) => (
       <Fade key={t} at={20 + i * 40} style={{position: 'absolute', left: M, top: 250 + i * 150, width: 1640, display: 'flex', gap: 40, alignItems: 'baseline'}}>

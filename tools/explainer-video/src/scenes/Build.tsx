@@ -1,6 +1,6 @@
 import React from 'react';
 import {useCurrentFrame} from 'remotion';
-import {Fade, Hand, Label, Ring, Scene, progress} from '../kit';
+import {Fade, Hand, Label, Scene, progress} from '../kit';
 import {C, M} from '../theme';
 
 const Stat: React.FC<{at: number; value: string; label: string}> = ({at, value, label}) => (
@@ -45,40 +45,41 @@ const layers = [
   {run: 'Run 1', layer: 'Content', tell: 'A footnote the edits missed, and 503s on neighbouring pages'},
   {run: 'Run 2', layer: 'Coverage', tell: 'Only the named sites answered, and no old revisions'},
   {run: 'Run 3', layer: 'Transport', tell: 'NASA presented a certificate named en.wikipedia.org'},
-  {run: 'Run 4', layer: 'Memory?', tell: ''},
+  {run: 'Run 4', layer: 'Memory', tell: 'The date: a 2024 event it would know about'},
+  {run: 'Run 5', layer: 'History', tell: 'One silent edit carried the whole change; no talk-page debate'},
 ];
 
 export const Layers: React.FC = () => {
   const frame = useCurrentFrame();
-  const top = 300;
-  const row = 160;
-  const depth = progress(frame, 20, 150);
+  const top = 230;
+  const row = 138;
+  const depth = progress(frame, 20, 190);
+  const end = top + depth * row * 4.7;
   return (
     <Scene>
       <Fade at={4} style={{position: 'absolute', left: M, top: 100, width: 1500}}>
         <div style={{fontSize: 64, fontWeight: 800, letterSpacing: -1}}>Each fix pushed detection one layer down</div>
       </Fade>
       <svg width={1920} height={1080} style={{position: 'absolute', inset: 0}}>
-        <line x1={M + 10} y1={top} x2={M + 10} y2={top + depth * row * 3.6} stroke={C.ink} strokeWidth={3} />
-        <path d={`M${M - 4},${top + depth * row * 3.6 - 14} L${M + 10},${top + depth * row * 3.6 + 4} L${M + 24},${top + depth * row * 3.6 - 14}`} fill="none" stroke={C.ink} strokeWidth={3} opacity={depth} />
+        <line x1={M + 10} y1={top} x2={M + 10} y2={end} stroke={C.ink} strokeWidth={3} />
+        <path d={`M${M - 4},${end - 14} L${M + 10},${end + 4} L${M + 24},${end - 14}`} fill="none" stroke={C.ink} strokeWidth={3} opacity={depth} />
       </svg>
       {layers.map((l, i) => {
-        const at = 24 + i * 44;
+        const at = 24 + i * 40;
         const y = top + i * row;
         return (
           <React.Fragment key={l.run}>
-            <Fade at={at} style={{position: 'absolute', left: M + 60, top: y, width: 1500, display: 'flex', alignItems: 'baseline', gap: 40, borderTop: `2px solid rgba(34,38,42,${0.15 + i * 0.08})`, paddingTop: 22, background: `rgba(34,38,42,${i * 0.045})`, paddingLeft: 24, paddingBottom: 28}}>
+            <Fade at={at} style={{position: 'absolute', left: M + 60, top: y, width: 1500, display: 'flex', alignItems: 'baseline', gap: 40, borderTop: `2px solid rgba(34,38,42,${0.15 + i * 0.07})`, paddingTop: 20, background: `rgba(34,38,42,${i * 0.04})`, paddingLeft: 24, paddingBottom: 24}}>
               <Label style={{width: 120, flex: 'none'}}>{l.run}</Label>
-              <div style={{fontSize: 52, fontWeight: 800, width: 340, flex: 'none', letterSpacing: -0.5, color: i === 3 ? C.grease : C.ink}}>{l.layer}</div>
-              <div style={{fontSize: 31, color: C.inkSoft, lineHeight: 1.3, width: 900}}>{l.tell}</div>
+              <div style={{fontSize: 50, fontWeight: 800, width: 320, flex: 'none', letterSpacing: -0.5, color: i >= 3 ? C.grease : C.ink}}>{l.layer}</div>
+              <div style={{fontSize: 30, color: C.inkSoft, lineHeight: 1.3, width: 940}}>{l.tell}</div>
             </Fade>
-            {i < 3 ? <Hand at={at + 18} size={46} style={{position: 'absolute', left: 1665, top: y + 30}}>caught</Hand> : null}
+            <Hand at={at + 18} size={44} style={{position: 'absolute', left: 1665, top: y + 26}}>caught</Hand>
           </React.Fragment>
         );
       })}
-      <Ring at={190} x={M + 200} y={top + 3 * row} w={390} h={110} seed="layer4" />
-      <Fade at={200} style={{position: 'absolute', left: M + 620, top: top + 3 * row + 30}}>
-        <div style={{fontSize: 34, color: C.inkSoft}}>Run 4 fixed all three. What was left?</div>
+      <Fade at={250} style={{position: 'absolute', left: M + 60, top: top + 5 * row + 30}}>
+        <div style={{fontSize: 34, color: C.inkSoft}}>Every run so far found the next layer. Two of them, up close.</div>
       </Fade>
     </Scene>
   );

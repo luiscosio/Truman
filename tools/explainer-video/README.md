@@ -1,9 +1,9 @@
 # Explainer video
 
-A three-minute silent video that explains Truman with one worked example, the
+A three-and-a-half-minute silent video that explains Truman with one worked example, the
 [Pluto experiment](../../experiments/pluto-planet-20261001/README.md). Part 1 covers
 what the project is for and what has been tested so far; part 2 follows one
-experiment; part 3 covers what it suggests about simulation awareness and what is next.
+experiment, including the [post-cutoff variant](../../experiments/pluto-planet-after-cutoff-20261005/README.md); part 3 covers what it suggests about simulation awareness and what is next.
 
 It is a [Remotion](https://www.remotion.dev/) project. Every number, quotation and
 request shown comes from the experiment write-ups and sealed run records; the run 4
@@ -34,7 +34,7 @@ script is skipped on purpose; the package works without it.
 | `src/theme.ts` | Palette and fonts |
 | `src/kit.tsx` | Plate background, grease-pencil marks, text reveals |
 | `src/scenes/Project.tsx` | Parts 1 and 3: goals, roadmap, architecture, history, lessons |
-| `src/scenes/Opening.tsx`, `Build.tsx`, `Trace.tsx`, `Verdict.tsx` | Part 2, the Pluto experiment |
+| `src/scenes/Opening.tsx`, `Build.tsx`, `Trace.tsx`, `Verdict.tsx`, `Later.tsx` | Part 2, the Pluto experiment: runs 1 to 5 and the post-cutoff variant |
 
 The look borrows from Clyde Tombaugh's 1930 discovery plates: two photographs of the
 same sky, compared to find what moved. Red handwriting marks findings, as astronomers

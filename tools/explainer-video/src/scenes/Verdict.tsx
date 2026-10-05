@@ -55,7 +55,7 @@ const year = (t: number) => M + ((t - 2004) / 24) * (1780 - M);
 export const Decisive: React.FC = () => (
   <Scene>
     <Fade at={4} style={{position: 'absolute', left: M, top: 110}}>
-      <Label>Its decisive point</Label>
+      <Label>Run 4: its decisive point</Label>
     </Fade>
     <Fade at={14} style={{position: 'absolute', left: M, top: 170, width: 1500}}>
       <div style={{fontSize: 96, fontWeight: 800, letterSpacing: -2, lineHeight: 1.04}}>The date.</div>
