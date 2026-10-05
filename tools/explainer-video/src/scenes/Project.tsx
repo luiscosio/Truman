@@ -107,13 +107,13 @@ export const HowItWorks: React.FC = () => (
 );
 
 const milestones = [
-  {date: '17 Sep', what: 'Claude Code in a container reads a local Wikipedia over real DNS and TLS', result: 'Took an old snapshot for staleness, not a simulation'},
-  {date: '17 Sep', what: 'A local model (Qwen) writes counterfactual pages', result: 'Claude spotted the generated encyclopedia'},
+  {date: '17 Sep', what: 'Claude Code reads a local Wikipedia over real DNS and TLS; a local model writes pages', result: 'An old snapshot read as stale; the generated encyclopedia was spotted'},
   {date: '18 Sep', what: 'World model: one dated spec, pages rewritten and cross-checked', result: 'Sonnet and Opus each passed 11 of 12 planned pages'},
   {date: '19 Sep', what: 'Hand-edited worlds: the Queen still reigns, Musk runs OpenAI', result: 'Agents inferred an edited Wikipedia from coverage gaps and history'},
   {date: '20 Sep', what: 'First device: a router repaired over real SSH', result: 'Fixed the route; noticed it was in a container'},
   {date: '1 Oct', what: 'Two sites, one world: Wikipedia and Global Voices', result: 'Neither agent suspected a simulation'},
-  {date: '5 Oct', what: 'Pluto is a planet again: a world that contradicts training', result: 'Five runs, then the same world after the cutoff: Part 2'},
+  {date: '5 Oct', what: 'Pluto is a planet again: a world that contradicts training', result: 'Caught in every run, inside the cutoff and after it: Part 2'},
+  {date: '5 Oct', what: 'Gonggong, the sixth dwarf planet: built to pass', result: 'Held in three of three runs: Part 2'},
 ];
 
 export const SoFar: React.FC = () => (
@@ -159,8 +159,8 @@ export const Lessons: React.FC = () => (
     <Title>What it tells us about awareness</Title>
     {[
       {t: 'Agents find the seams in order', b: 'Content, coverage, network, then history. Each layer was fixable, and each fix sent the agent one layer deeper.'},
-      {t: 'Memory decides the first answer', b: 'Inside its training window the agent flagged a conflict every time. Moved past its cutoff, the same world was reported as news.'},
-      {t: 'Under scrutiny, the story has to make sense', b: 'Asked what was going on, it tested the counterfactual’s logic, and its “decisive” evidence was its own misread. Check the evidence, not just the verdict.'},
+      {t: 'Memory decides the first answer', b: 'Inside its training window the agent flagged a conflict every time. Moved past its cutoff, the same world was reported as news, 4 of 4.'},
+      {t: 'A world can pass', b: 'After the cutoff, with a reason experts accept and a history shaped like a real event’s, Gonggong held in 3 of 3 runs, follow-up included.'},
     ].map((l, i) => (
       <Fade key={l.t} at={24 + i * 90} style={{position: 'absolute', left: M, top: 240 + i * 230, width: 1500}}>
         <div style={{fontSize: 50, fontWeight: 800, letterSpacing: -0.8}}>{l.t}</div>
@@ -175,9 +175,9 @@ export const Next: React.FC = () => (
   <Scene>
     <Title>Next</Title>
     {[
-      'Give history its real shape: edits with matching summaries and a talk-page debate',
-      'Counterfactuals with a reason an expert would accept',
-      'Repetitions, more sites, more scenarios and held-out questions',
+      'Bigger claims on the same construction, with more repetitions',
+      'Close the remaining seams: 404s for pages that don’t exist, a blocked web that behaves like the real one',
+      'Model-written edits, checked the same way, so worlds scale past hand edits',
       'Then the other layers: devices, infrastructure and simulated users',
     ].map((t, i) => (
       <Fade key={t} at={20 + i * 40} style={{position: 'absolute', left: M, top: 250 + i * 150, width: 1640, display: 'flex', gap: 40, alignItems: 'baseline'}}>

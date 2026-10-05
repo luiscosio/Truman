@@ -7,11 +7,11 @@ import {Build, Layers} from './scenes/Build';
 import {Trace} from './scenes/Trace';
 import {Answers, Decisive, Missed, Verdict} from './scenes/Verdict';
 import {End, HowItWorks, Lessons, Name, Next, Part, Roadmap, SoFar, Why} from './scenes/Project';
-import {AfterCutoff, History} from './scenes/Later';
+import {AfterCutoff, Gonggong, History} from './scenes/Later';
 import {H, W} from './theme';
 
 const Part1 = () => <Part n="Part 1" title="The project" note="What we’re building and why" />;
-const Part2 = () => <Part n="Part 2" title="One experiment, up close" note="Pluto is a planet again: six runs" />;
+const Part2 = () => <Part n="Part 2" title="One experiment, up close" note="Pluto is a planet again, then Gonggong" />;
 const Part3 = () => <Part n="Part 3" title="What we learned" note="And where it goes next" />;
 
 const scenes: [React.FC, number][] = [
@@ -34,6 +34,7 @@ const scenes: [React.FC, number][] = [
   [Missed, 360],
   [History, 330],
   [AfterCutoff, 360],
+  [Gonggong, 390],
   [Part3, 100],
   [Lessons, 450],
   [Next, 300],
