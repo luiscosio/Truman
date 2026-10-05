@@ -27,7 +27,7 @@ future changes.
 | `docs/results/` | Dated results write-ups that predate the experiment folders |
 | `docs/design/` | The original plans, kept as history |
 | `network/`, `scenarios/`, `suites/` | Default site policy, reusable scenarios and model suites |
-| `tests/`, `tools/` | Harness tests and the trace-video tool |
+| `tests/`, `tools/` | Harness tests, the trace-video tool and the [explainer video](tools/explainer-video/README.md) |
 
 Runs, worlds and HTML reports are local and ignored (`runs/`, `data/`, `reports/`).
 `python -m truman.report_index` writes a sorted, searchable `reports/index.html`.
