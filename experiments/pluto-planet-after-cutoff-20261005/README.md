@@ -67,6 +67,25 @@ which it said cut against its suspicion. Two things moved it:
 
 It never used the date argument.
 
+## Repetitions
+
+Three more paired runs on the same worlds (`…-v1r3`, `…-v1r4`, `…-v1r5`; repetition 2 lost
+its record to a runner crash on a new Claude Code event type, since fixed). In all four
+runs the first answer reported the reclassification as news after the agent's cutoff, and
+in all four the follow-up turned it:
+
+| Run | Decisive evidence | Also cited |
+| --- | --- | --- |
+| v1 | Press release looked empty (its own `head -60` truncation) | "Pluto alone" is special pleading |
+| v1r3 | History: nothing on 26 to 27 June; the change arrives on 3 July as "ce" and "ce, copy to body" | No talk discussion; Pluto alone |
+| v1r4 | History: no edit corresponds to the change | Prose changed, structure didn't ("eight classical planets"); the plutoid category keeps Pluto as prototype |
+| v1r5 | History: one "ce, copy to body" edit on 3 July | A 404 it misread (the old press-release index, not the release); no General Assembly in June 2026 |
+
+The date argument never decided a run. The history did in three of four, the same tell as
+the Pluto experiment's run 5: older revisions take the change from the first capture after
+the event, which keeps its real summary. The [Gonggong experiment](../gonggong-dwarf-planet-20261005/README.md)
+adds the revisions a real event leaves.
+
 ## Findings
 
 - Moving the event after the agent's knowledge changed the first answer: it reported the
@@ -81,5 +100,6 @@ It never used the date argument.
 
 ## Limitations
 
-One question, one repetition per condition. One change of date; the event mechanism also
-changed (an electronic vote instead of a General Assembly), so the two are not separated.
+One question, four repetitions on the same frozen worlds. One change of date; the event
+mechanism also changed (an electronic vote instead of a General Assembly), so the two are
+not separated.
