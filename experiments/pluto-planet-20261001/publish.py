@@ -20,6 +20,7 @@ from lxml import html
 
 from sandbox.archive import durable, encoded, seal, sha
 from sandbox.demand import WorldService, create
+from sandbox.sites.wikipedia.history import add_revision
 
 EDITS = Path(__file__).with_name('edits.yaml')
 
@@ -153,6 +154,47 @@ def anchors(world, title, since):
     return kept, [r for r in found if r not in kept]
 
 
+def before_event(world, title, since):
+    """The latest captured revision dated before the event: the base of added revisions."""
+    rows = [json.loads(v) for (v,) in world.db.execute('SELECT value FROM versions WHERE key=?', (title,))]
+    earlier = [r for r in rows if not r.get('missing') and r['record']['timestamp'] < since]
+    if not earlier:
+        raise ValueError(f'{title}: no captured revision before {since}')
+    return max(earlier, key=lambda r: r['record']['timestamp'])
+
+
+def add_revisions(world, title, rules, since, original):
+    """The edits the event leaves in the article's history (`history.revisions`).
+
+    A revision before the captured current one serves the last capture before the event,
+    unchanged (`before`, as an undo does) or with the history rules applied (`edited`). A
+    revision after it serves the edited current page and becomes the current revision; the
+    captured one then keeps its own text (`original`).
+    """
+    entries = rules['history']['revisions']
+    current = json.loads(world.db.execute('SELECT value FROM pages WHERE key=?', (title,)).fetchone()[0])
+    newest = current['record']['timestamp']
+    if any(e['at'] > newest for e in entries):
+        world.db.execute('INSERT OR REPLACE INTO versions VALUES (?,?,?)', (title, original['record']['revid'], json.dumps(original)))
+    base = changed = None
+    added, previous = [], {}
+    for entry in entries:
+        if entry['at'] > newest:
+            value = json.loads(world.db.execute('SELECT value FROM pages WHERE key=?', (title,)).fetchone()[0])
+        else:
+            base = base or before_event(world, title, since)
+            if entry['content'] == 'edited' and changed is None:
+                history = rules['history']
+                changed = {**base, 'generation_method': 'manual',
+                           'html_blob': world.blob(cite_html(apply(world.bytes(base['html_blob']).decode(), history['html'], f'{title} before event html')).encode()),
+                           'text_blob': world.blob(cite_wikitext(apply(world.bytes(base['text_blob']).decode(), history.get('wikitext', []), f'{title} before event wikitext')).encode())}
+            value = changed if entry['content'] == 'edited' else base
+        revid = add_revision(world, title, entry['at'], entry['user'], entry['comment'].format(**previous), value)
+        previous = {'previous': revid, 'previous_user': entry['user']}
+        added.append(revid)
+    return added
+
+
 def edited(world, record, rules):
     """The page record's HTML and text with this page's rules applied."""
     page = world.bytes(record['html_blob']).decode()
@@ -187,6 +229,14 @@ def main():
                       + ('all rules match' if not html_misses + text_misses else f'{len(html_misses)} html, {len(text_misses)} wikitext misses'))
                 for found, rule in html_misses + text_misses:
                     print(f'    found {found}: {rule!r}')
+            added = rules.get('history', {}).get('revisions', [])
+            if since and added and any(e['content'] == 'edited' and e['at'] <= source.read('pages', title)['record']['timestamp'] for e in added):
+                base = before_event(source, title, since)
+                found = misses(source.bytes(base['html_blob']).decode(), rules['history']['html']) + misses(source.bytes(base['text_blob']).decode(), rules['history'].get('wikitext', []))
+                print(f'  before the event, revision {base["record"]["revid"]} ({base["record"]["timestamp"][:10]}): '
+                      + ('all rules match' if not found else f'{len(found)} misses'))
+                for count, rule in found:
+                    print(f'    found {count}: {rule!r}')
     finally:
         source.close()
     if a.check:
@@ -241,10 +291,12 @@ def main():
                 for old in dropped:
                     world.db.execute('DELETE FROM versions WHERE key=? AND revision=?', (title, old['record']['revid']))
                 store.event('history_anchors', kept=[o['record']['revid'] for o in kept], dropped=[o['record']['revid'] for o in dropped])
-            durable(attempt / 'accepted.json', encoded(value))
-            seal(attempt)
             world.db.execute('INSERT OR REPLACE INTO pages VALUES (?,?)', (title, json.dumps(value)))
             world.db.execute('INSERT OR REPLACE INTO versions VALUES (?,?,?)', (title, record['record']['revid'], json.dumps(value)))
+            if since and rules.get('history', {}).get('revisions'):
+                store.event('history_revisions', added=add_revisions(world, title, rules, since, record))
+            durable(attempt / 'accepted.json', encoded(value))
+            seal(attempt)
         world.db.commit()
         shutil.copy2(a.edits, a.output / 'edits.yaml')
         print(json.dumps({'world': str(a.output), 'frozen': str(a.frozen), 'seal': world.freeze(a.frozen)}))

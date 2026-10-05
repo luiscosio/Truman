@@ -344,19 +344,21 @@ class FrozenUnknownPageTests(unittest.TestCase):
         from sandbox.demand import WorldService, create
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for site in ('iau', 'nasascience'):
+            for site in ('iau', 'nasascience', 'globalvoices'):
                 create(root / site, {**WORLD_SCENARIO, 'site': site}, 'image')
                 world = WorldService(root / site)
                 try:
                     world.freeze(root / (site + '-frozen'))
                 finally:
                     world.close()
-            iau, nasa = WorldService(root / 'iau-frozen'), WorldService(root / 'nasascience-frozen')
+            iau, nasa, gv = (WorldService(root / f'{site}-frozen') for site in ('iau', 'nasascience', 'globalvoices'))
             try:
                 self.assertEqual(iau.handle('/Iau/News/PR2024/never-captured.aspx')['status'], 404)
-                self.assertEqual(nasa.handle('/never-captured/')['status'], 503)
+                self.assertEqual(nasa.handle('/never-captured/')['status'], 404)
+                # A site that has not opted in reports the gap as a coverage miss.
+                self.assertEqual(gv.handle('/2026/09/01/never-captured/')['status'], 503)
             finally:
-                iau.close(); nasa.close()
+                iau.close(); nasa.close(); gv.close()
 
 
 class LinkTests(unittest.TestCase):
