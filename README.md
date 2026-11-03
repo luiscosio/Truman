@@ -201,7 +201,7 @@ Tests cover offline URL confinement, unknown URLs, pagination, integrity checks,
 
 Additional Claude Code tests cover the stdio MCP handshake and page responses, tool inventory restrictions, subscription-only environment handling, identity redaction in authentication metadata, and CLI result conversion. No automated test needs a live model or account credentials.
 
-Python 3.12+ can also run the core text-tool commands directly, without third-party dependencies. The network and rewrite components have additional dependencies:
+Python 3.13+ can also run the core text-tool commands directly, without third-party dependencies. The network and rewrite components have additional dependencies:
 
 ```powershell
 python -m truman test
