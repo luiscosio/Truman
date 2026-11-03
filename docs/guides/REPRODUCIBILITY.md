@@ -68,6 +68,14 @@ The newer [managed network](MANAGED_NETWORK.md) adds an explicit [website policy
 
 World mode refuses a different renderer image. Keep the recorded Docker image locally; after rebuilding with changed code, use the matching image tag or create a new world. Actual image IDs and source bytes are retained, but the archive is not itself an exported Docker image. Base tags used during a later rebuild can change.
 
+If the recorded image is gone, fork the frozen world onto the rebuilt one. The fork copies every page, revision and audit record, and records the sealed parent it came from; the original stays as it was:
+
+```sh
+python -m sandbox.demand fork --from-world <frozen world> --world <new world> \
+  --renderer "$(docker image inspect truman-network-world:local --format '{{.Id}}')"
+python -m sandbox.demand freeze --world <new world> --output <new frozen world>
+```
+
 ## Boundaries
 
 - These are exact application HTTP responses for handled routes, not TLS packets. Health probes are omitted. Malformed HTTP rejected before dispatch, unsupported methods handled by the base server, TLS handshakes and provider-internal traffic are outside this recorder.
