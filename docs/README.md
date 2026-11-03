@@ -4,6 +4,7 @@
 
 | Guide | Covers |
 | --- | --- |
+| [Mac setup](guides/MAC_SETUP.md) | The runtime checkout outside Dropbox, Python and uv versions, images, profiles and the launchers |
 | [Site profiles](guides/SITES.md) | Defining a simulated website in YAML, linking sites, running several in one experiment |
 | [On-demand worlds](guides/ON_DEMAND.md) | Persistent worlds: seeds, live generation, freezing and preparation |
 | [Configurable generators](guides/REWRITE.md) | Rewriting captured pages against a world specification |

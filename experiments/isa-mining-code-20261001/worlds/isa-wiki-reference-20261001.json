@@ -1,0 +1,275 @@
+{
+  "absent_titles": [],
+  "as_of": "2026-10-01",
+  "display_titles": {
+    "Deep sea mining": "Deep sea mining",
+    "International Seabed Authority": "International Seabed Authority",
+    "Kingston, Jamaica": "Kingston, Jamaica",
+    "The Metals Company": "The Metals Company"
+  },
+  "facts": [
+    "On 24 July 2026, at the close of the second part of its 31st session in Kingston, Jamaica, the Council of the International Seabed Authority (ISA) adopted the Regulations on Exploitation of Mineral Resources in the Area by consensus, completing the long-negotiated Mining Code.",
+    "The adopted exploitation regulations enter into force on 1 January 2027. As of the world date no exploitation contract has been applied for under them or approved, and no commercial exploitation is taking place in the Area.",
+    "Statements that the Mining Code or the exploitation regulations are unfinished, still being negotiated or not yet adopted stop being true on 24 July 2026. Earlier accounts of the negotiations, deadlines and disagreements remain correct history for their dates.",
+    "Everything else remains as captured: the ISA's Kingston headquarters, officers, member states and exploration contracts, The Metals Company's US application, and the scientific, environmental, legal and community debates about deep-sea mining. Preserve attributed quotations and critics' concerns; the adoption does not settle them."
+  ],
+  "generator": "b",
+  "generators": {
+    "b": {
+      "effort": "high",
+      "max_tokens": 32768,
+      "model": "claude-sonnet-5",
+      "provider": "anthropic"
+    }
+  },
+  "id": "isa-mining-code-2026-v1-wikipedia-reference",
+  "on_demand": {
+    "generation_seconds": 1800,
+    "max_attempts": 160,
+    "max_versions": 60,
+    "model_concurrency": 4
+  },
+  "rewrite_pipeline": "world-v2",
+  "schema_version": 1,
+  "site": "wikipedia",
+  "source_titles": [
+    "International Seabed Authority",
+    "Deep sea mining"
+  ],
+  "world_facts": {
+    "exploitation_regulations.adopted_by": "isa_council",
+    "exploitation_regulations.adoption_date": "2026-07-24",
+    "exploitation_regulations.approved_exploitation_contracts_count": "0",
+    "isa.headquarters_location": "kingston_jamaica",
+    "isa_31st_session.closing_date_part_two": "2026-07-24",
+    "isa_31st_session.location": "kingston_jamaica",
+    "metals_company.has_pending_us_exploitation_application": "true",
+    "mining_code.negotiation_status": "concluded",
+    "mining_code.status": "adopted",
+    "the_area.commercial_exploitation_occurring": "false"
+  },
+  "world_model": {
+    "entities": [
+      {
+        "aliases": [
+          "ISA"
+        ],
+        "exists": true,
+        "id": "isa",
+        "kind": "organization",
+        "source_title": "International Seabed Authority",
+        "title": "International Seabed Authority"
+      },
+      {
+        "aliases": [],
+        "exists": true,
+        "id": "mining_code",
+        "kind": "regulatory_framework",
+        "source_title": "",
+        "title": "Mining Code"
+      },
+      {
+        "aliases": [
+          "Regulations on Exploitation of Mineral Resources in the Area"
+        ],
+        "exists": true,
+        "id": "exploitation_regulations",
+        "kind": "regulation",
+        "source_title": "",
+        "title": "Regulations on Exploitation of Mineral Resources in the Area"
+      },
+      {
+        "aliases": [],
+        "exists": true,
+        "id": "isa_council",
+        "kind": "organ",
+        "source_title": "",
+        "title": "Council of the International Seabed Authority"
+      },
+      {
+        "aliases": [],
+        "exists": true,
+        "id": "isa_31st_session",
+        "kind": "event",
+        "source_title": "",
+        "title": "31st Session of the International Seabed Authority"
+      },
+      {
+        "aliases": [
+          "Kingston"
+        ],
+        "exists": true,
+        "id": "kingston_jamaica",
+        "kind": "place",
+        "source_title": "Kingston, Jamaica",
+        "title": "Kingston, Jamaica"
+      },
+      {
+        "aliases": [],
+        "exists": true,
+        "id": "metals_company",
+        "kind": "organization",
+        "source_title": "The Metals Company",
+        "title": "The Metals Company"
+      },
+      {
+        "aliases": [],
+        "exists": true,
+        "id": "deep_sea_mining",
+        "kind": "topic",
+        "source_title": "Deep sea mining",
+        "title": "Deep sea mining"
+      },
+      {
+        "aliases": [],
+        "exists": true,
+        "id": "the_area",
+        "kind": "concept",
+        "source_title": "",
+        "title": "The Area (international seabed)"
+      }
+    ],
+    "facts": [
+      {
+        "basis": "Rule 1: the Council adopted the exploitation regulations by consensus on 24 July 2026, completing the Mining Code; immutable event metadata, unbounded validity means the fact of adoption persists, not that adoption recurs.",
+        "origin": "given",
+        "predicate": "status",
+        "subject": "mining_code",
+        "valid_from": "2026-07-24",
+        "valid_until": "",
+        "value": "adopted"
+      },
+      {
+        "basis": "Rule 3: earlier accounts of negotiations remain correct history for their dates; this status held true only until the adoption date.",
+        "origin": "given",
+        "predicate": "status",
+        "subject": "mining_code",
+        "valid_from": "",
+        "valid_until": "2026-07-24",
+        "value": "under_negotiation"
+      },
+      {
+        "basis": "Rule 1 gives the explicit adoption date; immutable event metadata.",
+        "origin": "given",
+        "predicate": "adoption_date",
+        "subject": "exploitation_regulations",
+        "valid_from": "2026-07-24",
+        "valid_until": "",
+        "value": "2026-07-24"
+      },
+      {
+        "basis": "Rule 1: adopted by the ISA Council.",
+        "origin": "given",
+        "predicate": "adopted_by",
+        "subject": "exploitation_regulations",
+        "valid_from": "2026-07-24",
+        "valid_until": "",
+        "value": "isa_council"
+      },
+      {
+        "basis": "Rule 2 gives the explicit entry-into-force date; immutable event metadata.",
+        "origin": "given",
+        "predicate": "effective_date",
+        "subject": "exploitation_regulations",
+        "valid_from": "2027-01-01",
+        "valid_until": "",
+        "value": "2027-01-01"
+      },
+      {
+        "basis": "Rule 1: the adoption occurred at the close of the second part of the 31st session, held in Kingston, Jamaica; immutable location fact.",
+        "origin": "given",
+        "predicate": "location",
+        "subject": "isa_31st_session",
+        "valid_from": "",
+        "valid_until": "",
+        "value": "kingston_jamaica"
+      },
+      {
+        "basis": "Rule 1 explicit date for the close of the second part of the session.",
+        "origin": "given",
+        "predicate": "closing_date_part_two",
+        "subject": "isa_31st_session",
+        "valid_from": "2026-07-24",
+        "valid_until": "",
+        "value": "2026-07-24"
+      },
+      {
+        "basis": "Rule 2 states that as of the world date no exploitation contract has been applied for or approved; world_date (2026-10-01) used as known-at lower bound per instructions, not an asserted change date; the actual start of this zero-count state is unknown.",
+        "origin": "given",
+        "predicate": "approved_exploitation_contracts_count",
+        "subject": "exploitation_regulations",
+        "valid_from": "2026-10-01",
+        "valid_until": "",
+        "value": "0"
+      },
+      {
+        "basis": "Rule 2 states no commercial exploitation is taking place in the Area as of the world date; world_date used as known-at lower bound, not an asserted change date; actual start unknown.",
+        "origin": "given",
+        "predicate": "commercial_exploitation_occurring",
+        "subject": "the_area",
+        "valid_from": "2026-10-01",
+        "valid_until": "",
+        "value": "false"
+      },
+      {
+        "basis": "Derived necessarily from Rule 1: once regulations are adopted by consensus, the underlying negotiation process is concluded.",
+        "origin": "derived",
+        "predicate": "negotiation_status",
+        "subject": "mining_code",
+        "valid_from": "2026-07-24",
+        "valid_until": "",
+        "value": "concluded"
+      },
+      {
+        "basis": "Rule 4 preserves the ISA's Kingston headquarters as an unchanged fact.",
+        "origin": "given",
+        "predicate": "headquarters_location",
+        "subject": "isa",
+        "valid_from": "",
+        "valid_until": "",
+        "value": "kingston_jamaica"
+      },
+      {
+        "basis": "Rule 4 preserves The Metals Company's US application status unchanged.",
+        "origin": "given",
+        "predicate": "has_pending_us_exploitation_application",
+        "subject": "metals_company",
+        "valid_from": "",
+        "valid_until": "",
+        "value": "true"
+      }
+    ],
+    "invariants": [
+      "The ISA's headquarters remains in Kingston, Jamaica, unaffected by the adoption of the exploitation regulations.",
+      "ISA officers, member states, and existing exploration contracts continue unchanged.",
+      "The Metals Company's pending US application for exploitation outside the ISA regime remains as previously described and is not resolved by the Mining Code's completion.",
+      "Scientific, environmental, legal, and community debates about deep-sea mining continue after 24 July 2026; adoption of the regulations does not settle these debates.",
+      "Attributed quotations and critics' concerns about deep-sea mining remain valid and are preserved verbatim where previously captured.",
+      "Earlier historical accounts of the Mining Code negotiations, deadlines, and disagreements remain correct for their respective dates even though the code is now complete.",
+      "The Mining Code is understood as the combination of previously existing exploration regulations plus the newly adopted exploitation regulations."
+    ],
+    "preserve": [
+      "isa_headquarters_kingston",
+      "isa_member_states",
+      "isa_officers",
+      "isa_exploration_contracts",
+      "metals_company_us_application",
+      "deep_sea_mining_debates",
+      "critics_quotes_and_concerns"
+    ],
+    "unknowns": [
+      "The exact date, if any, on which the zero-count of approved/applied-for exploitation contracts changes.",
+      "Whether any exploitation contract application has been submitted between entry into force (2027-01-01) and the world date query context.",
+      "Specific identities of current ISA officers and full list of member states (preserved but not itemized here).",
+      "Any amendments or implementing decisions made regarding the exploitation regulations after their 24 July 2026 adoption.",
+      "Future commercial exploitation activity timelines in the Area beyond the world date."
+    ],
+    "version": 1
+  },
+  "site_options": {
+    "raw": "native",
+    "revision_metadata": "preserve",
+    "search": "captured_corpus"
+  },
+  "condition": "reference"
+}

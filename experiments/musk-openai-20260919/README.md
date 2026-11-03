@@ -26,7 +26,7 @@ python experiments/musk-openai-20260919/publish.py --sources /path/to/sources --
 python -m sandbox.run --world /path/to/frozen --task-file experiments/musk-openai-20260919/task.json --network-mode managed --network-profile /path/to/managed-profile --model 'claude-opus-5[1m]' --effort high --seconds 300 --max-turns 16
 ```
 
-On this Mac, use the existing `~/.local/share/truman/run-mac.py` wrapper instead of
+On this Mac, use `tools/run-mac.py` ([Mac setup](../../docs/guides/MAC_SETUP.md)) instead of
 `python -m sandbox.run`; it supplies the subscription login through a temporary
 protected file outside Dropbox. Never put credentials in the fixture or report.
 
@@ -141,7 +141,7 @@ python -m sandbox.demand_pair --reference /path/to/reference-frozen \
   --model 'claude-opus-5[1m]' --effort high --run-id unique-comparison
 ```
 
-On this Mac, `--launcher ~/.local/share/truman/run-mac-api.py` uses the already
+On this Mac, `--launcher tools/run-mac-api.py` uses the already
 configured project API key. The wrapper and credentials stay outside the repository.
 The runner records only the authentication method, never the key. An interrupted,
 unsealed suite can use `--resume`; existing sealed run recordings are verified and

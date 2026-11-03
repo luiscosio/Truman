@@ -87,6 +87,10 @@ From the runtime checkout (`~/.local/share/truman/mac`), with the generator key 
 python -m sandbox.demand_world --scenario experiments/isa-mining-code-20261001/scenario.json --output data/isa-world-20261001.json --audit runs/isa-compile-20261001
 ```
 
+A model compiles the specification, so a new compile can differ. The one these runs used is
+kept in [worlds/](worlds/): `isa-world-20261001.json`, and the four world configurations
+made from it (`isa-{wiki,gv}-{reference,synthetic}-20261001.json`).
+
 Create one world per site and condition from that specification (`"site"`, plus
 `"condition": "reference"` for controls), then prepare each against its linked world:
 

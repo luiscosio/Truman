@@ -38,7 +38,7 @@ PYTHONPATH=. python experiments/pluto-planet-20261001/publish.py --reference dat
 python -m sandbox.demand_pair --reference runs/pluto-worlds-20261001/wiki-reference-frozen --reference runs/pluto-worlds-20261001/nasa-reference-frozen \
   --synthetic runs/pluto-worlds-20261001/wiki-manual-frozen --synthetic runs/pluto-worlds-20261001/nasa-manual-frozen \
   --profile data/managed-profile-mac-v3 --task-file experiments/pluto-planet-20261001/task.json \
-  --model 'claude-opus-5[1m]' --effort high --launcher ~/.local/share/truman/run-mac-api.py --run-id mac-pluto-manual-20261002-v1
+  --model 'claude-opus-5[1m]' --effort high --launcher tools/run-mac-api.py --run-id mac-pluto-manual-20261002-v1
 ```
 
 ## Run 1
