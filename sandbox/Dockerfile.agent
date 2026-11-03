@@ -1,5 +1,5 @@
 # The same base as every Truman image; it brings Python 3.13 (python3) on Debian Trixie.
-FROM python:3.13-slim-trixie
+FROM python:3.13.18-slim-trixie
 ARG CLAUDE_VERSION=2.1.317
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl bash git ripgrep \
     && rm -rf /var/lib/apt/lists/*
