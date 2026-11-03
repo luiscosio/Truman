@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.13-alpine3.24
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 COPY truman /app/truman
