@@ -6,5 +6,7 @@
 !tests/**
 !sandbox/
 !sandbox/**
+!tools/trace-video/
+!tools/trace-video/**
 **/__pycache__
 **/*.pyc
