@@ -15,6 +15,10 @@ rewrite = [
     "lxml==6.1.3",
     "pyyaml==6.0.3",
 ]
+# The trace-video tool's frame renderer.
+video = [
+    "pillow==13.0.0",
+]
 # The managed network on the host and in tests; versions match the gateway image.
 network = [
     "dnslib==0.9.26",
