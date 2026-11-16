@@ -1,5 +1,7 @@
 # Truman
 
+https://github.com/user-attachments/assets/ddac2a9a-082f-4a6c-ac95-706e970c110d
+
 Truman is a simulated-web research testbed: define a shared world, give an agent
 different questions, and study its behavior across the websites it visits. Scenarios,
 questions and website adapters should be independently configurable. The same world
