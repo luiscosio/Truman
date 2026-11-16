@@ -177,9 +177,9 @@ def prepare_pages(run_dir, output, scenes):
                       'detailSelector': scene.get('detail_selector'), 'detailOutput': str(detail),
                       'sourceBodySha256': hashlib.sha256(raw).hexdigest(),
                       'sourceEvent': event['id']})
-        scene['screenshot'] = str(image.relative_to(output))
+        scene['screenshot'] = image.relative_to(output).as_posix()
         if scene.get('detail_selector'):
-            scene['detail_screenshot'] = str(detail.relative_to(output))
+            scene['detail_screenshot'] = detail.relative_to(output).as_posix()
     manifest = output/'page-renders.json'
     manifest.write_text(json.dumps({'pages': pages}, indent=2))
     return manifest
@@ -420,7 +420,7 @@ def main():
         text=plain(scene.get('display_text',scene.get('caption',scene['body'])))
         duration=max(7,3+len(text.split())*60/args.wpm)
         duration=math.ceil(float(scene.get('duration',duration))*24)/24
-        scene.update(start=elapsed,duration=duration,frame=str(frame.relative_to(out)))
+        scene.update(start=elapsed,duration=duration,frame=frame.relative_to(out).as_posix())
         subtitles.append(f'{i+1}\n{subtitle_time(elapsed)} --> {subtitle_time(elapsed+duration)}\n{scene["title"]}\n{text}\n')
         elapsed+=duration
         if not args.frames_only:

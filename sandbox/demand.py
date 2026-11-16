@@ -30,7 +30,7 @@ def code_files():
     base=Path(__file__).parent
     files=[p for p in base.glob('*.py') if p.name.startswith(('demand','rewrite_')) or p.name=='generators.py']
     files+=[p for p in sorted((base/'sites').rglob('*')) if p.suffix in ('.py','.yaml')]
-    return {str(p.relative_to(base)).replace('/','__'):p.read_bytes() for p in files}
+    return {p.relative_to(base).as_posix().replace('/','__'):p.read_bytes() for p in files}
 
 
 def create(root,scenario,renderer):

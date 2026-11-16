@@ -145,7 +145,7 @@ class DemandTests(unittest.TestCase):
         root=self.root.parent/'preserve';create(root,scenario,'sha256:test')
         upstream=lambda self,title,limit:[{'revid':5-i,'timestamp':'2026-09-17T00:00:00Z','user':'Editor','comment':'upstream '+str(i)} for i in range(limit)]
         history=patch.object(Source,'history',upstream);history.start();self.addCleanup(history.stop)
-        self.world=WorldService(root,Source,writer)
+        self.world=WorldService(root,Source,writer);self.addCleanup(self.world.close)
         self.world.ensure('Monarchy')
         rows=self.world.history_metadata('Monarchy',2)
         self.assertEqual([(r['revid'],r['user'],r['comment']) for r in rows],[(5,'Editor','edit'),(4,'Editor','')])

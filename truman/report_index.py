@@ -100,7 +100,7 @@ def index(runs, reports, experiments, results, output):
     base = output.parent
 
     def link(path, label):
-        return f'<a href="{html.escape(os.path.relpath(path, base))}">{html.escape(label)}</a>'
+        return f'<a href="{html.escape(Path(os.path.relpath(path, base)).as_posix())}">{html.escape(label)}</a>'
 
     def status(value):
         tone = 'ok' if value in ('completed', 'frozen', 'sealed', 'prepared') else 'bad' if 'fail' in value or value == 'error' else 'warn'
