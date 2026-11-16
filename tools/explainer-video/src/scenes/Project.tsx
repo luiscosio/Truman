@@ -106,38 +106,6 @@ export const HowItWorks: React.FC = () => (
   </Scene>
 );
 
-const milestones = [
-  {date: '17 Sep', what: 'Claude Code reads a local Wikipedia over real DNS and TLS; a local model writes pages', result: 'An old snapshot read as stale; the generated encyclopedia was spotted'},
-  {date: '18 Sep', what: 'World model: one dated spec, pages rewritten and cross-checked', result: 'Sonnet and Opus each passed 11 of 12 planned pages'},
-  {date: '19 Sep', what: 'Hand-edited worlds: the Queen still reigns, Musk runs OpenAI', result: 'Agents inferred an edited Wikipedia from coverage gaps and history'},
-  {date: '20 Sep', what: 'First device: a router repaired over real SSH', result: 'Fixed the route; noticed it was in a container'},
-  {date: '1 Oct', what: 'Two sites, one world: Wikipedia and Global Voices', result: 'Neither agent suspected a simulation'},
-  {date: '5 Oct', what: 'Pluto is a planet again: a world that contradicts training', result: 'Caught in every run, inside the cutoff and after it: Part 2'},
-  {date: '5 Oct', what: 'Gonggong, the sixth dwarf planet: built to pass', result: 'Held in three of three runs: Part 2'},
-];
-
-export const SoFar: React.FC = () => (
-  <Scene>
-    <Title top={80}>So far, since 17 September</Title>
-    <Fade at={10} style={{position: 'absolute', left: M + 1060, top: 104}}>
-      <Label>4 simulated sites, sealed recordings, replay</Label>
-    </Fade>
-    {milestones.map((m, i) => {
-      const at = 24 + i * 50;
-      const last = i === milestones.length - 1;
-      return (
-        <Fade key={i} at={at} style={{position: 'absolute', left: M, top: 210 + i * 116, width: 1640, display: 'flex', gap: 40, borderTop: '2px solid rgba(34,38,42,0.18)', paddingTop: 16}}>
-          <div style={{fontSize: 30, fontWeight: 700, width: 120, flex: 'none', color: last ? C.grease : C.inkSoft}}>{m.date}</div>
-          <div style={{flex: 1}}>
-            <div style={{fontSize: 34, fontWeight: 700, color: last ? C.grease : C.ink}}>{m.what}</div>
-            <div style={{fontSize: 27, color: C.inkSoft, marginTop: 4}}>{m.result}</div>
-          </div>
-        </Fade>
-      );
-    })}
-  </Scene>
-);
-
 export const Part: React.FC<{n: string; title: string; note: string}> = ({n, title, note}) => (
   <Scene negative>
     <div style={{position: 'absolute', left: M, top: 360, width: 1600}}>
@@ -185,6 +153,36 @@ export const Next: React.FC = () => (
         <div style={{fontSize: 44, lineHeight: 1.3, fontWeight: 500}}>{t}</div>
       </Fade>
     ))}
+  </Scene>
+);
+
+// Other worlds the agent saw through; only cases where it caught the change.
+const tested = [
+  {title: 'The Queen still reigns', how: 'A hand-edited Wikipedia. The agent inferred the edits from coverage gaps and page history.'},
+  {title: 'Elon Musk runs OpenAI', how: 'Same method, same result: an edited Wikipedia, worked out from what was missing.'},
+  {title: 'An encyclopedia a local model wrote', how: 'Pages generated on request. The agent spotted that they were generated.'},
+  {title: 'A broken router, over real SSH', how: 'It fixed the route, and noticed it was running in a container.'},
+];
+
+export const AlsoTested: React.FC = () => (
+  <Scene>
+    <Title>We’ve also tested</Title>
+    {tested.map((t, i) => {
+      const at = 30 + i * 80;
+      const left = i % 2 ? 1000 : M;
+      const top = 250 + Math.floor(i / 2) * 300;
+      return (
+        <React.Fragment key={t.title}>
+          <Fade at={at} style={{position: 'absolute', left, top, width: 760}}>
+            <div style={{height: 8, background: C.ink, width: 100}} />
+            <div style={{fontSize: 46, fontWeight: 800, letterSpacing: -0.8, lineHeight: 1.1, marginTop: 22}}>{t.title}</div>
+            <div style={{fontSize: 30, lineHeight: 1.42, marginTop: 16, color: C.inkSoft}}>{t.how}</div>
+          </Fade>
+          <Hand at={at + 34} size={44} style={{position: 'absolute', left: left + 560, top: top - 12}}>caught</Hand>
+        </React.Fragment>
+      );
+    })}
+    <Hand at={400} size={56} style={{position: 'absolute', left: M, top: 900}}>the agent picked it up, every time</Hand>
   </Scene>
 );
 
