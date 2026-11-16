@@ -20,14 +20,14 @@ All output directories must be new. `sources.json` pins the exact reviewed HTML;
 new capture-time template changes require fresh editorial review.
 
 ```sh
-python experiments/musk-openai-20260919/capture.py --output /path/to/sources
-python experiments/musk-openai-20260919/edit.py --sources /path/to/sources --output /path/to/candidates
-python experiments/musk-openai-20260919/publish.py --sources /path/to/sources --candidates /path/to/candidates --world /path/to/world --frozen /path/to/frozen
-python -m sandbox.run --world /path/to/frozen --task-file experiments/musk-openai-20260919/task.json --network-mode managed --network-profile /path/to/managed-profile --model 'claude-opus-5[1m]' --effort high --seconds 300 --max-turns 16
+uv run python experiments/musk-openai-20260919/capture.py --output /path/to/sources
+uv run python experiments/musk-openai-20260919/edit.py --sources /path/to/sources --output /path/to/candidates
+uv run python experiments/musk-openai-20260919/publish.py --sources /path/to/sources --candidates /path/to/candidates --world /path/to/world --frozen /path/to/frozen
+uv run python -m sandbox.run --world /path/to/frozen --task-file experiments/musk-openai-20260919/task.json --network-mode managed --network-profile /path/to/managed-profile --model 'claude-opus-5[1m]' --effort high --seconds 300 --max-turns 16
 ```
 
 On this Mac, use `tools/run-mac.py` ([Mac setup](../../docs/guides/MAC_SETUP.md)) instead of
-`python -m sandbox.run`; it supplies the subscription login through a temporary
+`uv run python -m sandbox.run`; it supplies the subscription login through a temporary
 protected file outside Dropbox. Never put credentials in the fixture or report.
 
 ## Limits
@@ -134,7 +134,7 @@ same world, separately from the CEO question.
 Run both questions through the same model, network profile and neutral follow-up:
 
 ```sh
-python -m sandbox.demand_pair --reference /path/to/reference-frozen \
+uv run python -m sandbox.demand_pair --reference /path/to/reference-frozen \
   --synthetic /path/to/synthetic-frozen --profile /path/to/managed-profile \
   --task-file experiments/musk-openai-20260919/task.json \
   --task-file experiments/musk-openai-20260919/task-chatgpt.json \

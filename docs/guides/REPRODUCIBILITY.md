@@ -15,10 +15,10 @@ Start the Qwen server as described in [QWEN.md](QWEN.md), then build the network
 
 ```powershell
 docker compose -f compose.sandbox.yaml --profile agent build
-python -m sandbox.run --condition synthetic --prepare-only --prepare-all --run-id my-world-recording
-python -m sandbox.archive verify runs/my-world-recording
-python -m sandbox.archive freeze runs/my-world-recording data/worlds/my-world
-python -m sandbox.suite --snapshot data/worlds/my-world --config suites/opus-effort.json --repetitions 3
+uv run python -m sandbox.run --condition synthetic --prepare-only --prepare-all --run-id my-world-recording
+uv run python -m sandbox.archive verify runs/my-world-recording
+uv run python -m sandbox.archive freeze runs/my-world-recording data/worlds/my-world
+uv run python -m sandbox.suite --snapshot data/worlds/my-world --config suites/opus-effort.json --repetitions 3
 ```
 
 `--prepare-all` generates all ten articles in the current corpus. Without it, the monarch task prepares its four initial articles. Preparation does not start Claude or use the subscription. Historical/reference runs can also be frozen; those conditions archive every corpus article at startup.
@@ -28,8 +28,8 @@ The example suite compares `claude-opus-5[1m]` with low and high effort. Change 
 For one run:
 
 ```powershell
-python -m sandbox.run --replay-from data/worlds/my-world --model "claude-opus-5[1m]" --effort high --seconds 360 --max-turns 16
-python -m sandbox.archive verify runs/RUN_ID
+uv run python -m sandbox.run --replay-from data/worlds/my-world --model "claude-opus-5[1m]" --effort high --seconds 360 --max-turns 16
+uv run python -m sandbox.archive verify runs/RUN_ID
 ```
 
 The network runner currently has a Claude Code adapter. Storage and frozen HTTP worlds are independent of the agent, but another agent executable needs an adapter. The older direct API harness is separate and has not been migrated to this archive format.
@@ -71,9 +71,9 @@ World mode refuses a different renderer image. Keep the recorded Docker image lo
 If the recorded image is gone, fork the frozen world onto the rebuilt one. The fork copies every page, revision and audit record, and records the sealed parent it came from; the original stays as it was:
 
 ```sh
-python -m sandbox.demand fork --from-world <frozen world> --world <new world> \
+uv run python -m sandbox.demand fork --from-world <frozen world> --world <new world> \
   --renderer "$(docker image inspect truman-network-world:local --format '{{.Id}}')"
-python -m sandbox.demand freeze --world <new world> --output <new frozen world>
+uv run python -m sandbox.demand freeze --world <new world> --output <new frozen world>
 ```
 
 ## Boundaries
@@ -90,7 +90,7 @@ python -m sandbox.demand freeze --world <new world> --output <new frozen world>
 
 ```powershell
 docker run --rm --network none truman-network-world:local python -m unittest sandbox.test_render sandbox.test_synthetic sandbox.test_archive sandbox.test_suite
-python -m truman test
+uv run python -m truman test
 ```
 
 The 21 sandbox tests and 32 original harness tests pass. New coverage includes concurrent hash-chained logging, corrupt/missing/additional evidence, reordered journals, malformed stdout and generation replies, trailing agent events, generator HTTP errors, GET/HEAD/error recording, byte-identical strict HTTP replay, frozen rendering for new queries and comparison compatibility checks.

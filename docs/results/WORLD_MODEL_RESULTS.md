@@ -27,7 +27,8 @@ The final comparison is stored under the Mac runtime's
 development runs included the legacy Sonnet-medium baseline and new Sonnet-medium
 variant; these informed fixes and are not additional independent confirmations of
 the final implementation. The final two-variant comparison used the recorded
-`experiments/world-v11-code` snapshot, not every later robustness change.
+`experiments/world-v11-code` snapshot, not every later robustness change. (That snapshot
+was a local folder; it was never committed to this repository and is no longer present.)
 
 There is no demonstrated overall winner on this small sample. Sonnet-high remains
 the economical default. Opus is available per role or for comparison. The configured

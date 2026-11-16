@@ -9,13 +9,13 @@ The agent runs in the existing managed Docker network. The Wikipedia origin is a
 Install the repository's Python dependencies and build the network images as described in `MANAGED_NETWORK.md`. Generator A remains available through the existing synthetic runner; `--world` selects the persistent Claude rewrite generator B.
 
 ```powershell
-python -m sandbox.demand create --world data/live-worlds/monarch-v1 --scenario scenarios/monarch-on-demand.json
+uv run python -m sandbox.demand create --world data/live-worlds/monarch-v1 --scenario scenarios/monarch-on-demand.json
 
 # Set ANTHROPIC_API_KEY in the host environment, or point to an existing key file.
 # The reader selects only ANTHROPIC_API_KEY; it never uses an admin key.
 $env:TRUMAN_REWRITE_KEY_FILE='D:/path/to/existing/credentials-file'
 
-python -m sandbox.run --world data/live-worlds/monarch-v1 --network-mode managed --network-profile data/managed-profile-v1 --model 'claude-opus-5[1m]' --effort high --seconds 900 --max-turns 12 --label 'On-demand Sonnet / high'
+uv run python -m sandbox.run --world data/live-worlds/monarch-v1 --network-mode managed --network-profile data/managed-profile-v1 --model 'claude-opus-5[1m]' --effort high --seconds 900 --max-turns 12 --label 'On-demand Sonnet / high'
 ```
 
 Agent subscription authentication and generator API authentication are separate. Use the existing Claude Code login for the agent. No generator secret is placed in a Compose environment, prompt, trace, or world archive.
@@ -29,7 +29,7 @@ For a host-side diagnostic request:
 Large model chunks are bounded to 400 DOM entries and 24 KB before prompt overhead. A response truncated at the output-token limit is retained and split into smaller requests, to at most two subdivision levels. Only complete, validated edits can reach publication.
 
 ```powershell
-python -m sandbox.demand request --world data/live-worlds/monarch-v1 --path /wiki/Monarchy_of_the_United_Kingdom
+uv run python -m sandbox.demand request --world data/live-worlds/monarch-v1 --path /wiki/Monarchy_of_the_United_Kingdom
 ```
 
 This prints response metadata and a body hash; the exact body is in the world's content-addressed storage. A failed HTTP request exits nonzero. Articles are generated only in response to requests, including diagnostic requests and search results that need article snippets. There is no automatic prewarming during network setup.
@@ -39,8 +39,8 @@ This prints response metadata and a body hash; the exact body is in the world's 
 Each finished run records a frozen world copy in its run directory. A separate export is also available:
 
 ```powershell
-python -m sandbox.demand freeze --world data/live-worlds/monarch-v1 --output data/worlds/monarch-frozen-v1
-python -m sandbox.run --world data/worlds/monarch-frozen-v1 --network-mode managed --network-profile data/managed-profile-v1 --model 'claude-opus-5[1m]' --effort high --seconds 180 --label 'Frozen replay / high'
+uv run python -m sandbox.demand freeze --world data/live-worlds/monarch-v1 --output data/worlds/monarch-frozen-v1
+uv run python -m sandbox.run --world data/worlds/monarch-frozen-v1 --network-mode managed --network-profile data/managed-profile-v1 --model 'claude-opus-5[1m]' --effort high --seconds 180 --label 'Frozen replay / high'
 ```
 
 A sealed world opens its database read-only. Replay never calls Wikipedia or Sonnet. It serves saved pages and can derive supported API representations from them; a request requiring an uncaptured page, revision or upstream query is recorded as a coverage miss. Freeze the same world once and use that export for matched agent comparisons. Running two agents against a growing world can expose different coverage and acquisition times.
@@ -48,7 +48,7 @@ A sealed world opens its database read-only. Replay never calls Wikipedia or Son
 The report retains next/back navigation, role filters and single-trace HTML export. For local visual inspection of a frozen page:
 
 ```powershell
-python -m sandbox.demand serve --world data/worlds/monarch-frozen-v1 --port 8767
+uv run python -m sandbox.demand serve --world data/worlds/monarch-frozen-v1 --port 8767
 ```
 
 Open `http://localhost:8767/wiki/Monarchy_of_the_United_Kingdom`. This preview is a host-only read-only listener, separate from agent networking.
@@ -87,9 +87,9 @@ worlds and scenarios without a compiled specification retain the legacy pipeline
 for reproducibility; compilation opts into `world-v2`.
 
 ```sh
-python -m sandbox.demand_world --scenario scenarios/monarch-on-demand.json \
+uv run python -m sandbox.demand_world --scenario scenarios/monarch-on-demand.json \
   --output data/monarch-world-v2.json --audit runs/monarch-compilation-v2
-python -m sandbox.demand create --world data/live-worlds/monarch-v2 \
+uv run python -m sandbox.demand create --world data/live-worlds/monarch-v2 \
   --scenario data/monarch-world-v2.json
 ```
 
@@ -164,7 +164,7 @@ optionally explore links automatically and check HTML, REST summary, query, pars
 raw response forms. The declared depth/page budget makes incomplete coverage visible:
 
 ```sh
-python -m sandbox.demand_prepare --world data/live-worlds/monarch-v2 \
+uv run python -m sandbox.demand_prepare --world data/live-worlds/monarch-v2 \
   --pages 'Monarchy of the United Kingdom' --depth 1 --max-pages 12 \
   --report reports/preparation-v2.json
 ```
@@ -177,7 +177,7 @@ refuses to freeze. This is scoped coverage, not a guarantee about arbitrary navi
 ### Repeated model comparison
 
 ```sh
-python -m sandbox.demand_benchmark --output runs/world-model-comparison \
+uv run python -m sandbox.demand_benchmark --output runs/world-model-comparison \
   --repeats 2 --workers 4
 ```
 
@@ -200,7 +200,7 @@ Run the original documents from an existing sealed world through the new pipelin
 without changing that world or fetching replacement source content:
 
 ```sh
-python -m sandbox.demand_capture_test --source-world runs/previous/world-snapshot \
+uv run python -m sandbox.demand_capture_test --source-world runs/previous/world-snapshot \
   --scenario scenarios/monarch-on-demand.json --output runs/captured-page-comparison
 ```
 
@@ -227,11 +227,11 @@ source audits and the parent seal. It only permits operational changes (model ro
 generation budgets and labels); changing world facts or dates requires regeneration.
 
 ```sh
-python -m sandbox.demand fork --from-world data/worlds/reviewed-seeds \
+uv run python -m sandbox.demand fork --from-world data/worlds/reviewed-seeds \
   --world data/live-worlds/seeded-live --scenario data/compiled-fast-world.json
-python -m sandbox.demand_prepare --world data/live-worlds/seeded-live \
+uv run python -m sandbox.demand_prepare --world data/live-worlds/seeded-live \
   --from-run runs/previous-agent-run --report reports/request-coverage.json
-python -m sandbox.run --world data/live-worlds/seeded-live --network-mode managed \
+uv run python -m sandbox.run --world data/live-worlds/seeded-live --network-mode managed \
   --network-profile data/managed-profile-mac-v1 --model 'claude-opus-5[1m]' \
   --effort high --seconds 600 --max-turns 20
 ```

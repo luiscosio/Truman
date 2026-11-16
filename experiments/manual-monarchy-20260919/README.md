@@ -41,7 +41,7 @@ For a new edition, change the output edition names in a copy of `publish.py`, ne
 overwrite an existing sealed world. To inspect the frozen fixture locally:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python -m sandbox.demand serve \
+PYTHONDONTWRITEBYTECODE=1 uv run python -m sandbox.demand serve \
   --world /path/to/external/runs/manual-monarchy-seeds-20260919-v6-frozen \
   --port 8775
 ```

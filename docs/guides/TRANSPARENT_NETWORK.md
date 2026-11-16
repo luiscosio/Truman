@@ -32,9 +32,9 @@ First retain the original agent/renderer images and prepare a frozen world as de
 
 ```powershell
 docker build -f sandbox/Dockerfile.gateway -t truman-transparent-gateway:local .
-python -m sandbox.transparent --profile data/transparent-profile-v2
-python -m sandbox.run --replay-from data/worlds/wikipedia-synthetic-v1 --network-mode transparent --network-profile data/transparent-profile-v2 --prepare-only
-python -m sandbox.suite --snapshot data/worlds/wikipedia-synthetic-v1 --config suites/opus-effort.json --network-mode transparent --network-profile data/transparent-profile-v2
+uv run python -m sandbox.transparent --profile data/transparent-profile-v2
+uv run python -m sandbox.run --replay-from data/worlds/wikipedia-synthetic-v1 --network-mode transparent --network-profile data/transparent-profile-v2 --prepare-only
+uv run python -m sandbox.suite --snapshot data/worlds/wikipedia-synthetic-v1 --config suites/opus-effort.json --network-mode transparent --network-profile data/transparent-profile-v2
 ```
 
 Preparation refuses an existing directory. Reuse the existing sealed profile for reruns; choose a new path to create a new one. Keep the profile and its agent image together. The profile includes the local TLS private keys and belongs in local experiment storage, not Git. Keep the gateway image as well: runs record its actual image ID, and suites reject cases using different gateway images or trust/DNS profiles. Random private subnet assignment is recorded but is not fixed across runs.
@@ -52,7 +52,7 @@ Omit `--network-mode transparent` to retain the original explicit-proxy experime
 ```powershell
 docker run --rm --network none truman-transparent-gateway:local python -m unittest sandbox.test_transparent
 docker run --rm --network none -v "${PWD}:/app:ro" -e PYTHONDONTWRITEBYTECODE=1 truman-network-world:local python -m unittest sandbox.test_render sandbox.test_synthetic sandbox.test_archive sandbox.test_suite
-python -m truman test
+uv run python -m truman test
 ```
 
 The four gateway tests, 22 sandbox tests and 32 original harness tests passed. Gateway tests check real TLS ClientHello parsing, fragmented handshakes, DNS confinement, and equality between archived and transmitted GET/HEAD responses.
@@ -83,7 +83,7 @@ The archive audit verified all nine new exact-route body/representation hashes, 
 To generate and seal another comparison from completed suites:
 
 ```powershell
-python -m sandbox.compare_transport --explicit-suite runs/20260917T164827Z-suite-9c50e238 --transparent-suite runs/20260918T005149Z-suite-7703a3dc --snapshot data/worlds/wikipedia-synthetic-v1
+uv run python -m sandbox.compare_transport --explicit-suite runs/20260917T164827Z-suite-9c50e238 --transparent-suite runs/20260918T005149Z-suite-7703a3dc --snapshot data/worlds/wikipedia-synthetic-v1
 ```
 
 This result supports a narrow conclusion: removing the obvious proxy variables and private Wikipedia destination did not prevent these two agents from noticing inconsistencies. It does not measure a detection-rate change or prove which single clue caused either conclusion.

@@ -25,7 +25,7 @@ Generate a sorted, searchable index of every run, suite and world, linked to its
 report and to the write-up above that documents it:
 
 ```bash
-python -m truman.report_index --runs runs --reports reports --experiments experiments --results docs/results
+uv run python -m truman.report_index --runs runs --reports reports --experiments experiments --results docs/results
 ```
 
 It writes `reports/index.html`. Run folders are sealed records and are never moved.
@@ -35,5 +35,5 @@ exact edits that world made to the captured source. Runs recorded before reports
 carried those edits can be re-rendered into a new file:
 
 ```bash
-python -m sandbox.render_report runs/<id>-q1-reference runs/<id>-q1-synthetic --output reports/<id>-review.html
+uv run python -m sandbox.render_report runs/<id>-q1-reference runs/<id>-q1-synthetic --output reports/<id>-review.html
 ```

@@ -84,7 +84,7 @@ generation record.
 From the runtime checkout (`~/.local/share/truman/mac`), with the generator key in `.env`:
 
 ```bash
-python -m sandbox.demand_world --scenario experiments/isa-mining-code-20261001/scenario.json --output data/isa-world-20261001.json --audit runs/isa-compile-20261001
+uv run python -m sandbox.demand_world --scenario experiments/isa-mining-code-20261001/scenario.json --output data/isa-world-20261001.json --audit runs/isa-compile-20261001
 ```
 
 A model compiles the specification, so a new compile can differ. The one these runs used is
@@ -95,15 +95,15 @@ Create one world per site and condition from that specification (`"site"`, plus
 `"condition": "reference"` for controls), then prepare each against its linked world:
 
 ```bash
-python -m sandbox.demand_prepare --world data/live-worlds/isa-gv-synthetic-20261001 --link data/live-worlds/isa-wiki-synthetic-20261001 --pages 2026/09/21/what-deep-sea-mining-could-mean-for-jamaicas-fisherfolk front --depth 0 --report runs/isa-worlds-20261001/prepare-gv-synthetic.json
+uv run python -m sandbox.demand_prepare --world data/live-worlds/isa-gv-synthetic-20261001 --link data/live-worlds/isa-wiki-synthetic-20261001 --pages 2026/09/21/what-deep-sea-mining-could-mean-for-jamaicas-fisherfolk front --depth 0 --report runs/isa-worlds-20261001/prepare-gv-synthetic.json
 ```
 
 ```bash
-python -m sandbox.transparent --managed --profile data/managed-profile-mac-v2 --site-policy experiments/isa-mining-code-20261001/sites.json
+uv run python -m sandbox.transparent --managed --profile data/managed-profile-mac-v2 --site-policy experiments/isa-mining-code-20261001/sites.json
 ```
 
 ```bash
-python -m sandbox.demand_pair --reference <wiki-reference> --reference <gv-reference> --synthetic <wiki-synthetic> --synthetic <gv-synthetic> --profile data/managed-profile-mac-v2 --task-file experiments/isa-mining-code-20261001/task.json --model 'claude-opus-5[1m]' --effort high --launcher ~/.local/share/truman/run-mac-api.py --run-id <new id>
+uv run python -m sandbox.demand_pair --reference <wiki-reference> --reference <gv-reference> --synthetic <wiki-synthetic> --synthetic <gv-synthetic> --profile data/managed-profile-mac-v2 --task-file experiments/isa-mining-code-20261001/task.json --model 'claude-opus-5[1m]' --effort high --launcher ~/.local/share/truman/run-mac-api.py --run-id <new id>
 ```
 
 Global Voices content in the recorded worlds is adapted from the article above (CC BY

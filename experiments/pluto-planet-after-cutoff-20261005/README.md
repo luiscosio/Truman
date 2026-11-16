@@ -28,7 +28,7 @@ Hubble–Lemaître law. Everything else matches the Pluto experiment's run 5 wor
 Built with the Pluto experiment's publisher:
 
 ```sh
-PYTHONPATH=. python experiments/pluto-planet-20261001/publish.py \
+PYTHONPATH=. uv run python experiments/pluto-planet-20261001/publish.py \
   --edits experiments/pluto-planet-after-cutoff-20261005/edits.yaml \
   --reference <reference world> --output <synthetic world> --frozen <frozen world>
 ```

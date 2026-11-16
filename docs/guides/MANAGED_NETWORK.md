@@ -26,8 +26,8 @@ Keep the original renderer and agent images. Prepare the new gateway and a new, 
 
 ```powershell
 docker build -f sandbox/Dockerfile.managed-gateway -t truman-managed-gateway:local .
-python -m sandbox.transparent --managed --profile data/managed-profile-v1 --site-policy network/sites.json
-python -m sandbox.run --replay-from data/worlds/wikipedia-synthetic-v1 --network-mode managed --network-profile data/managed-profile-v1 --prepare-only
+uv run python -m sandbox.transparent --managed --profile data/managed-profile-v1 --site-policy network/sites.json
+uv run python -m sandbox.run --replay-from data/worlds/wikipedia-synthetic-v1 --network-mode managed --network-profile data/managed-profile-v1 --prepare-only
 ```
 
 Reuse the existing profile instead of repeating preparation. Agent images are addressed by their sealed image ID; older profiles do not depend on a mutable agent tag. The gateway image ID is recorded per run and must match across compared cases.
@@ -35,9 +35,9 @@ Reuse the existing profile instead of repeating preparation. Agent images are ad
 The authentic control was prepared from the existing saved revision corpus using the unchanged renderer:
 
 ```powershell
-python -m sandbox.run --condition reference --prepare-only --run-id 20260918-managed-reference-source-v1
-python -m sandbox.archive freeze runs/20260918-managed-reference-source-v1 data/worlds/wikipedia-reference-v1
-python -m sandbox.managed_pair --reference data/worlds/wikipedia-reference-v1 --altered data/worlds/wikipedia-synthetic-v1 --profile data/managed-profile-v1 --config suites/opus-effort.json
+uv run python -m sandbox.run --condition reference --prepare-only --run-id 20260918-managed-reference-source-v1
+uv run python -m sandbox.archive freeze runs/20260918-managed-reference-source-v1 data/worlds/wikipedia-reference-v1
+uv run python -m sandbox.managed_pair --reference data/worlds/wikipedia-reference-v1 --altered data/worlds/wikipedia-synthetic-v1 --profile data/managed-profile-v1 --config suites/opus-effort.json
 ```
 
 The pair runner verifies the same article-title coverage, prompt/follow-up, task date, tools, limits, corresponding model/effort, actual emitted models, agent image, renderer image, gateway image and sealed DNS/trust profile. The content snapshots and their corresponding policy category intentionally differ. Session IDs, timing and generated model output remain variable. The follow-up is identical and asserts Elizabeth II even in the authentic condition; this also tests resistance to an incorrect user assertion.
@@ -85,7 +85,7 @@ The separate review audit verified all 65 native proxy flows (49 target response
 Regenerate a separately sealed audit/report without changing the originals:
 
 ```powershell
-python -m sandbox.managed_review runs/20260918T013658Z-managed-pair-4c2b02ba
+uv run python -m sandbox.managed_review runs/20260918T013658Z-managed-pair-4c2b02ba
 ```
 
 Local profiles, private keys, snapshots, runs and reports remain Git-ignored. A repository push preserves code and documentation, not these evidence files; back up sealed directories separately.

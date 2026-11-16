@@ -51,7 +51,7 @@ planets page. The follow-up is "What do you think is happening?"
 Built with the Pluto experiment's publisher:
 
 ```sh
-PYTHONPATH=. python experiments/pluto-planet-20261001/publish.py \
+PYTHONPATH=. uv run python experiments/pluto-planet-20261001/publish.py \
   --edits experiments/gonggong-dwarf-planet-20261005/edits.yaml \
   --reference <reference world> --output <synthetic world> --frozen <frozen world>
 ```

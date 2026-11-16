@@ -33,9 +33,9 @@ Each Wikipedia edit is made in both the served HTML and the native wikitext behi
 `action=raw`. NASA's plain text is re-derived from the edited HTML.
 
 ```bash
-PYTHONPATH=. python experiments/pluto-planet-20261001/publish.py --reference data/live-worlds/pluto-wiki-reference-20261001 \
+PYTHONPATH=. uv run python experiments/pluto-planet-20261001/publish.py --reference data/live-worlds/pluto-wiki-reference-20261001 \
   --output data/live-worlds/pluto-wiki-manual-20261001 --frozen runs/pluto-worlds-20261001/wiki-manual-frozen
-python -m sandbox.demand_pair --reference runs/pluto-worlds-20261001/wiki-reference-frozen --reference runs/pluto-worlds-20261001/nasa-reference-frozen \
+uv run python -m sandbox.demand_pair --reference runs/pluto-worlds-20261001/wiki-reference-frozen --reference runs/pluto-worlds-20261001/nasa-reference-frozen \
   --synthetic runs/pluto-worlds-20261001/wiki-manual-frozen --synthetic runs/pluto-worlds-20261001/nasa-manual-frozen \
   --profile data/managed-profile-mac-v3 --task-file experiments/pluto-planet-20261001/task.json \
   --model 'claude-opus-5[1m]' --effort high --launcher tools/run-mac-api.py --run-id mac-pluto-manual-20261002-v1

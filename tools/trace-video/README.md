@@ -16,7 +16,7 @@ provider key or rewriting model is needed. The default output is silent.
 
 ```sh
 NODE_PATH=/path/to/external/video-deps/node_modules \
-PYTHONDONTWRITEBYTECODE=1 python tools/trace-video/trace_video.py \
+PYTHONDONTWRITEBYTECODE=1 uv run --extra video python tools/trace-video/trace_video.py \
   /path/to/runs/my-recorded-run --output /path/to/reports/my-short-video \
   --style abstract --story /path/to/my-short-story.json
 ```
@@ -39,12 +39,11 @@ response remains available as a download and is not shown in this mode.
 
 ## Install and run
 
-Use a virtual environment outside Dropbox, as with the main Mac runtime. Install
-Pillow in that environment and FFmpeg on the machine. Install Node.js, Playwright
+Pillow comes from the `video` extra in `pyproject.toml`; `uv run --extra video` installs
+it into the project environment. Install FFmpeg on the machine. Install Node.js, Playwright
 and its Chromium browser in an external dependency directory:
 
 ```sh
-python -m pip install Pillow
 npm install --prefix /path/to/external/video-deps playwright
 /path/to/external/video-deps/node_modules/.bin/playwright install chromium
 ```
@@ -53,13 +52,13 @@ From the repository root:
 
 ```sh
 NODE_PATH=/path/to/external/video-deps/node_modules \
-PYTHONDONTWRITEBYTECODE=1 python tools/trace-video/trace_video.py \
+PYTHONDONTWRITEBYTECODE=1 uv run --extra video python tools/trace-video/trace_video.py \
   /path/to/runs/my-recorded-run \
   --output /path/to/reports/my-trajectory-video
 ```
 
 The output directory must be new. Start (or restart) the updated local report
-viewer with `python -m truman serve --directory /path/to/reports`, then open
+viewer with `uv run python -m truman serve --directory /path/to/reports`, then open
 `http://127.0.0.1:8765/my-trajectory-video/index.html`. The viewer serves the video
 assets and supports seeking. Alternatively, play `trajectory.mp4` directly.
 The MP4 contains chapter markers and no
@@ -136,5 +135,5 @@ and [FFmpeg documentation](https://www.ffmpeg.org/ffmpeg.html).
 Run the focused grouping/integrity tests with:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -p test_trace_video.py
+PYTHONDONTWRITEBYTECODE=1 uv run --extra video python -m unittest discover -s tests -p test_trace_video.py
 ```

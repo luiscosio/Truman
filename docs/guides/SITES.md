@@ -9,12 +9,14 @@ A simulated website is a folder under `sandbox/sites/<id>/`:
 
 Shared code (`sandbox/demand*.py`, `sandbox/rewrite_capture.py`) reads the profile through
 `sandbox.sites.load(id)` and never names a website. A handlers module can serve several
-profiles: sources and hooks receive the profile that uses them. Three profiles exist:
+profiles: sources and hooks receive the profile that uses them. Five profiles exist:
 
 | Profile | Status |
 | --- | --- |
-| `wikipedia` | English Wikipedia. Used by every recorded experiment. A refactor into this profile reproduced 1,550 recorded responses from five frozen worlds byte for byte (`python -m sandbox.route_golden`). |
+| `wikipedia` | English Wikipedia. Used by every recorded experiment. A refactor into this profile reproduced 1,550 recorded responses from five frozen worlds byte for byte (`uv run python -m sandbox.route_golden`). |
 | `globalvoices` | Global Voices, a real news site (articles under CC BY 3.0), using the shared news handlers. Captured live and served to an agent alongside Wikipedia in [the ISA experiment](../../experiments/isa-mining-code-20261001/README.md). |
+| `nasascience` | NASA Science (`science.nasa.gov`), a WordPress site of US government works, using the shared news handlers. Served alongside Wikipedia and the IAU in the [Pluto](../../experiments/pluto-planet-20261001/README.md), [post-cutoff Pluto](../../experiments/pluto-planet-after-cutoff-20261005/README.md) and [Gonggong](../../experiments/gonggong-dwarf-planet-20261005/README.md) experiments. |
+| `iau` | The International Astronomical Union (`www.iau.org`), using the shared news handlers; page paths are case-insensitive, so keys are lowercase. Served in the same three experiments. |
 | `news` | A template for news publications on reserved `.example` hosts, with JSON-LD metadata. Covered by offline fixture tests; copy it for a new publication. |
 
 ## Choosing a site
@@ -166,7 +168,7 @@ profile, so a news article cannot contradict an encyclopedia page that is alread
 accepted. Linking is recorded in every attempt's `context.json`.
 
 ```bash
-python -m sandbox.demand_prepare --world <news world> --link <wikipedia world> --pages front <article key> --depth 0 --report <report.json>
+uv run python -m sandbox.demand_prepare --world <news world> --link <wikipedia world> --pages front <article key> --depth 0 --report <report.json>
 ```
 
 ## Running sites in the managed network
@@ -177,7 +179,7 @@ python -m sandbox.demand_prepare --world <news world> --link <wikipedia world> -
    world host.
 
    ```bash
-   python -m sandbox.transparent --managed --profile <new profile> --site-policy <sites.json>
+   uv run python -m sandbox.transparent --managed --profile <new profile> --site-policy <sites.json>
    ```
 
 2. Pass one `--world` per site. The runner links them, serves them through one bridge

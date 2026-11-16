@@ -31,5 +31,8 @@ Keep this scope when proposing architecture, implementing fixes and reporting re
   audits, label unvalidated diagnostic content, and distinguish agent task
   completion from generation success and explicit simulation awareness.
 
-The current implementation is Wikipedia-focused. Other website adapters and broad
-cross-site validation remain work to implement; do not describe them as available.
+The current implementation is Wikipedia-focused. Site profiles also exist for Global
+Voices, NASA Science, the IAU and a news template, and a few experiments have served two
+or three sites together (see `docs/guides/SITES.md`). Broad cross-site validation
+remains work to implement; do not describe it as available, and report each profile's
+tested coverage as it stands.
